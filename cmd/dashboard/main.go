@@ -10,6 +10,16 @@ import (
 	"github.com/kjsst/sh-mvdos/internal/vector"
 )
 
+func configPath(envKey, localDefault, dockerPath string) string {
+	if v := os.Getenv(envKey); v != "" {
+		return v
+	}
+	if _, err := os.Stat(dockerPath); err == nil {
+		return dockerPath
+	}
+	return localDefault
+}
+
 func main() {
 	ctx, err := guard.MustAuthorizeControlPlane(guard.Config{
 		PolicyPath: env("POLICY_PATH", "data/lab-policy.yaml"),
@@ -20,12 +30,12 @@ func main() {
 		os.Exit(guard.ExitCode(err))
 	}
 	srv := dashboard.NewWithPaths(
-		env("POLICY_PATH", "data/lab-policy.yaml"),
-		env("PHASES_PATH", "configs/phases.yaml"),
-		env("COMBOS_PATH", "configs/combos.yaml"),
-		env("VECTORS_PATH", vector.DefaultVectorsPath),
-		env("COMBO_PLANS_PATH", planner.DefaultComboPlansPath),
-		env("PATH_PROFILES_PATH", vector.DefaultPathProfilesPath),
+		configPath("POLICY_PATH", "data/lab-policy.yaml", "/data/lab-policy.yaml"),
+		configPath("PHASES_PATH", "configs/phases.yaml", "/configs/phases.yaml"),
+		configPath("COMBOS_PATH", "configs/combos.yaml", "/configs/combos.yaml"),
+		configPath("VECTORS_PATH", vector.DefaultVectorsPath, "/configs/vectors.yaml"),
+		configPath("COMBO_PLANS_PATH", planner.DefaultComboPlansPath, "/configs/combo-plans.yaml"),
+		configPath("PATH_PROFILES_PATH", vector.DefaultPathProfilesPath, "/configs/path-profiles.yaml"),
 		env("REDIS_ADDR", "127.0.0.1:6379"),
 		env("DASHBOARD_ADDR", "0.0.0.0:8089"),
 		env("DASHBOARD_TOKEN", ""),

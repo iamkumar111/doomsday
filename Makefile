@@ -44,7 +44,7 @@ sync-runtime:
 	./$(BIN_DIR)/sync-runtime
 
 lab-up:
-	docker compose --profile attacker --profile dashboard --profile vectors --profile monitoring up -d --build
+	./deploy/scripts/lab-up.sh
 
 lab-up-auto:
 	docker compose --profile attacker --profile auto --profile vectors --profile monitoring up -d --build
