@@ -445,6 +445,9 @@ func (s *Server) handlePolicy(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(string(body), "ws_path") {
 			existing.WSPath = strings.TrimSpace(draft.WSPath)
 		}
+		if draft.MaxDurationSec > 0 {
+			existing.MaxDurationSec = draft.MaxDurationSec
+		}
 		if err := existing.ValidateRuntimeBounds(s.PolicyPath); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

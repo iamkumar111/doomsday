@@ -344,6 +344,11 @@
               <input id="watchdog" type="number" min="0" max="100" value="0" />
             </div>
           </div>
+          <div class="field" style="margin-top:.85rem">
+            <label for="max_duration">Duration (seconds)</label>
+            <input id="max_duration" type="number" min="30" max="86400" value="300" />
+            <span class="hint" style="font-size:.78rem;color:var(--muted)">Run length before auto-stop (default 300 = 5 min). Slayer uses <code>-d</code> for the same thing.</span>
+          </div>
 
           <div class="field" style="margin-top:1rem">
             <label>Allowed hosts</label>
@@ -430,7 +435,7 @@
 <script>
 let formDirty = false, lastBlockedHost = '', allowedHosts = [], lastStatusKey = '', pollTimer = null, forceActivePollUntil = 0;
 const eventLog = [];
-const fields = ['target_url','combo','l7_mode','conductor_mode','workers','streams','watchdog','batch','proxy_file','ws_path'];
+const fields = ['target_url','combo','l7_mode','conductor_mode','workers','streams','watchdog','batch','proxy_file','ws_path','max_duration'];
 
 const STANDALONE_MODES = new Set(['h2-rapid-reset','ws-flood','slowloris','quic-burner']);
 const RUDY_MODES = new Set(['rudy']);
@@ -562,6 +567,7 @@ async function loadPolicy() {
   document.getElementById('streams').value = p.streams || 100;
   document.getElementById('watchdog').value = p.watchdog_cpu_percent ?? 0;
   document.getElementById('batch').value = p.batch_size || 50;
+  document.getElementById('max_duration').value = p.max_duration_sec || 300;
   document.getElementById('proxy_file').value = p.proxy_file || '';
   document.getElementById('ws_path').value = p.ws_path || '';
   allowedHosts = p.allowed_hosts || [];
@@ -597,6 +603,7 @@ function draftPolicy() {
     streams: +document.getElementById('streams').value,
     watchdog_cpu_percent: +document.getElementById('watchdog').value,
     batch_size: +document.getElementById('batch').value,
+    max_duration_sec: +document.getElementById('max_duration').value,
     proxy_file: document.getElementById('proxy_file').value.trim(),
     ws_path: document.getElementById('ws_path').value.trim()
   };
