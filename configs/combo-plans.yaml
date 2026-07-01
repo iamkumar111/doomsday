@@ -1,0 +1,56 @@
+plans:
+  - id: rudy-stress
+    label: Slayer RUDY parity
+    phases:
+      - vector: rudy
+        start_after_sec: 0
+        weight: 1.0
+        params:
+          path_profile: default
+
+  - id: slayer-l7-mix
+    label: Slayer L7 mix (GET + POST + API + RUDY)
+    phases:
+      - vector: httpget
+        start_after_sec: 0
+        weight: 0.25
+      - vector: httppost
+        start_after_sec: 0
+        weight: 0.25
+      - vector: apiflood
+        start_after_sec: 1
+        weight: 0.25
+      - vector: rudy
+        start_after_sec: 2
+        weight: 0.25
+
+  - id: protocol-storm
+    label: L7 POST + H2 + WS
+    phases:
+      - vector: httppost
+        start_after_sec: 0
+        weight: 0.4
+      - vector: h2-rapid-reset
+        start_after_sec: 2
+        weight: 0.35
+      - vector: ws-flood
+        start_after_sec: 4
+        weight: 0.25
+        params:
+          path_profile: websocket
+
+  - id: h2-only
+    label: HTTP/2 rapid reset only
+    phases:
+      - vector: h2-rapid-reset
+        start_after_sec: 0
+        weight: 1.0
+
+  - id: ws-only
+    label: WebSocket flood only
+    phases:
+      - vector: ws-flood
+        start_after_sec: 0
+        weight: 1.0
+        params:
+          path_profile: websocket

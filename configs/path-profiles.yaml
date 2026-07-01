@@ -1,0 +1,13 @@
+profiles:
+  default:
+    paths: ["/", "/index.html"]
+  api:
+    paths: ["/api/v1/users", "/api/search", "/api/health"]
+  graphql:
+    paths: ["/graphql"]
+  websocket:
+    paths: ["/ws", "/websocket", "/socket.io/", "/api/ws", "/v1/ws"]
+  wordpress:
+    paths: ["/wp-admin/admin-ajax.php", "/wp-json/wp/v2/posts"]
+  magento:
+    paths: ["/catalogsearch/result/", "/rest/V1/guest-carts"]

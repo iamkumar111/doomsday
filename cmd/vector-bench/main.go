@@ -29,6 +29,7 @@ func main() {
 		jsonOut    = flag.Bool("json", false, "JSON output")
 		policyPath = flag.String("policy", "data/lab-policy.yaml", "lab policy path")
 		skipProbe  = flag.Bool("skip-probe", false, "skip victim reachability check")
+		matrix     = flag.Bool("matrix", false, "Slayer-class vector matrix (httpget, httppost, rudy, apiflood, h2, ws)")
 	)
 	flag.Parse()
 
@@ -72,6 +73,29 @@ func main() {
 		}
 		cancel()
 		slog.Info("victim ok", "target", tgt)
+	}
+
+	if *matrix {
+		mopt := bench.MatrixOptions{
+			Target:    tgt,
+			Duration:  *duration,
+			Workers:   *workers,
+			Streams:   *streams,
+			Batch:     *batch,
+		}
+		mresults, err := bench.RunMatrix(ctx, mopt)
+		if err != nil {
+			slog.Error("matrix bench failed", "err", err)
+			os.Exit(1)
+		}
+		if *jsonOut {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(mresults)
+		} else {
+			fmt.Print(bench.FormatMatrixTable(mresults))
+		}
+		return
 	}
 
 	var results []bench.Result

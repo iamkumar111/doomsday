@@ -1,0 +1,151 @@
+vectors:
+  - id: httpget
+    label: HTTP GET flood
+    aliases: [get]
+    worker: l7-abuser
+    redis_vector: l7-abuser
+    protocol: http/1.1
+    bench_id: l7-httpget
+    capabilities:
+      workers: true
+      streams: true
+      batch: true
+      paths: true
+      payload_profile: false
+      proxy_file: true
+    defaults:
+      workers: 64
+      streams: 4
+      batch: 50
+    path_profiles: [default]
+
+  - id: httppost
+    label: HTTP POST flood
+    aliases: [post, httppost]
+    worker: l7-abuser
+    redis_vector: l7-abuser
+    protocol: http/1.1
+    bench_id: l7-post
+    capabilities:
+      workers: true
+      streams: true
+      batch: true
+      paths: true
+      payload_profile: true
+      proxy_file: true
+    defaults:
+      workers: 64
+      streams: 4
+      batch: 50
+    path_profiles: [default, api]
+
+  - id: rudy
+    label: RUDY slow POST
+    aliases: []
+    worker: l7-abuser
+    redis_vector: l7-abuser
+    protocol: http/1.1
+    bench_id: l7-rudy
+    capabilities:
+      workers: true
+      streams: false
+      batch: false
+      paths: false
+      payload_profile: false
+      proxy_file: true
+    defaults:
+      workers: 500
+
+  - id: apiflood
+    label: API JSON flood
+    aliases: [api, apiflood]
+    worker: l7-abuser
+    redis_vector: l7-abuser
+    protocol: http/1.1
+    bench_id: l7-apiflood
+    capabilities:
+      workers: true
+      streams: true
+      batch: true
+      paths: true
+      payload_profile: true
+      proxy_file: true
+    defaults:
+      workers: 64
+      streams: 8
+      batch: 50
+    path_profiles: [api, graphql]
+
+  - id: h2-rapid-reset
+    label: HTTP/2 rapid reset
+    aliases: [rapidreset, h2rapid]
+    worker: h2-thrasher
+    redis_vector: h2-rapid-reset
+    protocol: h2
+    bench_id: h2-rapid-reset
+    capabilities:
+      workers: true
+      streams: true
+      batch: true
+      paths: false
+      payload_profile: false
+      proxy_file: false
+    defaults:
+      workers: 32
+      streams: 500
+      batch: 100
+
+  - id: ws-flood
+    label: WebSocket flood
+    aliases: [wsflood]
+    worker: ws-flood
+    redis_vector: ws-flood
+    protocol: websocket
+    bench_id: ws-flood
+    capabilities:
+      workers: true
+      streams: true
+      batch: true
+      paths: true
+      payload_profile: false
+      proxy_file: false
+    defaults:
+      workers: 64
+      streams: 8
+      batch: 50
+    path_profiles: [websocket]
+
+  - id: slowloris
+    label: Slowloris hold
+    aliases: [slowloris-hold]
+    worker: slowloris
+    redis_vector: slowloris
+    protocol: http/1.1
+    bench_id: slowloris
+    capabilities:
+      workers: true
+      streams: false
+      batch: false
+      paths: false
+      proxy_file: false
+    defaults:
+      workers: 200
+
+  - id: baseline
+    label: L7 baseline mix
+    aliases: []
+    worker: l7-abuser
+    redis_vector: l7-abuser
+    protocol: http/1.1
+    bench_id: l7-baseline
+    capabilities:
+      workers: true
+      streams: true
+      batch: true
+      paths: true
+      proxy_file: true
+    defaults:
+      workers: 32
+      streams: 4
+      batch: 50
+    path_profiles: [default]

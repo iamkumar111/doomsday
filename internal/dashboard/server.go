@@ -21,6 +21,8 @@ import (
 	"github.com/kjsst/sh-mvdos/internal/labpolicy"
 	"github.com/kjsst/sh-mvdos/internal/learnattack"
 	"github.com/kjsst/sh-mvdos/internal/orchestrator"
+	"github.com/kjsst/sh-mvdos/internal/planner"
+	"github.com/kjsst/sh-mvdos/internal/vector"
 	"github.com/kjsst/sh-mvdos/internal/recon"
 	"github.com/kjsst/sh-mvdos/internal/redisbus"
 )
@@ -31,8 +33,11 @@ var staticFS embed.FS
 type Server struct {
 	PolicyPath  string
 	PhasesPath  string
-	CombosPath  string
-	RedisAddr   string
+	CombosPath      string
+	VectorsPath     string
+	ComboPlansPath  string
+	PathProfilesPath string
+	RedisAddr       string
 	Addr        string
 	APIToken    string
 	mu          sync.RWMutex
@@ -96,10 +101,17 @@ var weakDashboardTokens = map[string]bool{
 }
 
 func New(policyPath, phasesPath, combosPath, redisAddr, addr, apiToken string) *Server {
+	return NewWithPaths(policyPath, phasesPath, combosPath, vector.DefaultVectorsPath, planner.DefaultComboPlansPath, vector.DefaultPathProfilesPath, redisAddr, addr, apiToken)
+}
+
+func NewWithPaths(policyPath, phasesPath, combosPath, vectorsPath, comboPlansPath, pathProfilesPath, redisAddr, addr, apiToken string) *Server {
 	s := &Server{
-		PolicyPath:      policyPath,
-		PhasesPath:      phasesPath,
-		CombosPath:      combosPath,
+		PolicyPath:       policyPath,
+		PhasesPath:       phasesPath,
+		CombosPath:       combosPath,
+		VectorsPath:      vectorsPath,
+		ComboPlansPath:   comboPlansPath,
+		PathProfilesPath: pathProfilesPath,
 		RedisAddr:       redisAddr,
 		Addr:            addr,
 		APIToken:        apiToken,
@@ -261,6 +273,8 @@ func (s *Server) ListenAndServe() error {
 	api("/api/attack/stop", s.handleAttackStop)
 	api("/api/validate", s.handleValidate)
 	api("/api/combos", s.handleCombos)
+	api("/api/vectors", s.handleVectors)
+	api("/api/plan/preview", s.handlePlanPreview)
 	api("/api/recon", s.handleRecon)
 	api("/api/recon/apply", s.handleReconApply)
 	api("/api/recon/draft", s.handleReconDraft)
@@ -576,18 +590,37 @@ func (s *Server) handleAttackStart(w http.ResponseWriter, r *http.Request) {
 		s.learnMu.Unlock()
 	}
 
-	combo, err := orchestrator.FindCombo(combos, startCombo)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
+	now := time.Now()
+	maxDur := p.MaxDurationSec
+	if maxDur <= 0 {
+		maxDur = 300
+	}
+
+	runPlan, usePlanner, planErr := s.resolveRunPlan(p, startCombo, workers, streams, batch, maxDur)
+	if planErr != nil {
+		http.Error(w, planErr.Error(), 500)
 		return
 	}
-	attackMode := p.EffectiveAttackMode()
-	selected := orchestrator.SelectAttackPhases(phases, combo, attackMode)
-	if len(selected) == 0 {
-		http.Error(w, "no phases selected for combo", 400)
-		return
+
+	var required []string
+	var legacySelected []orchestrator.Phase
+	if usePlanner {
+		required = planner.RedisHeartbeatVectors(runPlan.RequiredWorkers)
+	} else {
+		combo, err := orchestrator.FindCombo(combos, startCombo)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		attackMode := p.EffectiveAttackMode()
+		legacySelected = orchestrator.SelectAttackPhases(phases, combo, attackMode)
+		if len(legacySelected) == 0 {
+			http.Error(w, "no phases selected for combo", 400)
+			return
+		}
+		required = orchestrator.RequiredVectors(legacySelected)
 	}
-	required := orchestrator.RequiredVectors(selected)
+
 	checkCtx, checkCancel := context.WithTimeout(r.Context(), 3*time.Second)
 	missing, err := s.bus.WorkersReady(checkCtx, required)
 	checkCancel()
@@ -600,11 +633,6 @@ func (s *Server) handleAttackStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now()
-	maxDur := p.MaxDurationSec
-	if maxDur <= 0 {
-		maxDur = 300
-	}
 	expires := now.Add(time.Duration(maxDur) * time.Second)
 
 	runID := newRunID()
@@ -634,7 +662,11 @@ func (s *Server) handleAttackStart(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 	s.persistRunState()
-	s.publishPhases(runID, selected, p.TargetURL, workers, streams, batch, p.ProxyFile, p.WSPath, now, expires)
+	if usePlanner {
+		s.publishRunPlan(runID, runPlan, now)
+	} else {
+		s.publishPhases(runID, legacySelected, p.TargetURL, workers, streams, batch, p.ProxyFile, p.WSPath, now, expires)
+	}
 
 	if learnattack.IsLearnMode(p.ConductorMode) && learner != nil {
 		s.startLearnLoop(learner, p, combos, phases, expires)

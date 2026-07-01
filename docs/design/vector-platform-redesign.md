@@ -1,6 +1,6 @@
 # Vector Platform Redesign — Safe, High-Performance Plan
 
-**Status:** Proposed (2026-07-01)  
+**Status:** Phase A implemented (2026-07-01) — Phase B/C in progress  
 **Goal:** Match or exceed Slayer-L7 lab performance while keeping ethics guardrails, allowlists, and observability the dashboard stack provides.  
 **Non-goal:** Remove safety controls or enable use against non-owned targets.
 

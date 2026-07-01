@@ -361,10 +361,12 @@
 
           <div class="alert warn" id="unsaved" style="display:none"></div>
           <div class="alert" id="validate_msg"></div>
+          <div class="alert" id="plan_preview" style="display:none;font-size:.8rem;max-height:180px;overflow:auto"></div>
 
           <div class="toolbar">
             <button class="btn-ghost" onclick="savePolicy()">Save</button>
             <button class="btn-ghost" onclick="validateTarget()">Validate</button>
+            <button class="btn-ghost" onclick="previewPlan()">Preview plan</button>
             <button class="btn-primary" onclick="startAttack()">Start</button>
             <button class="btn-danger" onclick="stopAttack()">Stop</button>
           </div>
@@ -607,6 +609,32 @@ function draftPolicy() {
     proxy_file: document.getElementById('proxy_file').value.trim(),
     ws_path: document.getElementById('ws_path').value.trim()
   };
+}
+
+async function previewPlan() {
+  const el = document.getElementById('plan_preview');
+  el.style.display = 'block';
+  el.textContent = 'Building plan…';
+  try {
+    const body = { combo: document.getElementById('combo').value };
+    const r = await apiFetch('/api/plan/preview', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if (!r.ok) {
+      const t = await r.text();
+      el.textContent = t || 'No planner for this combo — uses legacy phases.yaml';
+      el.className = 'alert warn';
+      return;
+    }
+    const plan = await r.json();
+    const lines = (plan.phases || []).map(ph =>
+      `${ph.start_after_sec}s · ${ph.vector} → ${ph.worker} · ${ph.scale.workers}w ${ph.scale.streams}s ${ph.scale.batch}b · ${ph.protocol}`);
+    el.innerHTML = `<strong>${plan.label || plan.plan_id}</strong> (${plan.max_duration_sec}s)<br>` +
+      (lines.length ? lines.join('<br>') : 'No phases') +
+      (plan.warnings?.length ? `<br><em>${plan.warnings.join('; ')}</em>` : '');
+    el.className = 'alert';
+  } catch (e) {
+    el.textContent = String(e);
+    el.className = 'alert err';
+  }
 }
 
 async function savePolicy() {
