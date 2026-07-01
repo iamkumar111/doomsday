@@ -35,13 +35,21 @@ func main() {
 		Vectors:    []string{"h2-rapid-reset"},
 		PolicyPath: policyPath,
 		Bus:        bus,
-		Run: func(ctx context.Context, ev redisbus.PhaseEvent) (uint64, uint64) {
+		Run: func(ctx context.Context, ev redisbus.PhaseEvent, prog *busloop.PhaseProgress) (uint64, uint64) {
 			scale := vector.Scale{
 				Workers: ev.Workers,
 				Streams: ev.Streams,
 				Batch:   ev.BatchSize,
 			}
+			if prog != nil {
+				prog.ActualMode = string(spec.ID)
+				prog.Protocol = spec.Protocol
+			}
 			res, _ := vector.Run(ctx, spec, ev.TargetURL, scale)
+			if prog != nil {
+				prog.Attempts.Store(res.Attempts)
+				prog.Errors.Store(res.Errors)
+			}
 			return res.Attempts, res.Errors
 		},
 	})

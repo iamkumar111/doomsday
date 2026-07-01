@@ -27,9 +27,17 @@ func main() {
 		Vector:     vector,
 		PolicyPath: policyPath,
 		Bus:        bus,
-		Run: func(ctx context.Context, ev redisbus.PhaseEvent) (uint64, uint64) {
+		Run: func(ctx context.Context, ev redisbus.PhaseEvent, prog *busloop.PhaseProgress) (uint64, uint64) {
+			if prog != nil {
+				prog.ActualMode = "quic-burner"
+				prog.Protocol = "quic"
+			}
 			w := worker.QUICBurner{Target: ev.TargetURL, Workers: ev.Workers, BatchSize: ev.BatchSize}
 			reqs, errs, _ := w.Run(ctx)
+			if prog != nil {
+				prog.Attempts.Store(reqs)
+				prog.Errors.Store(errs)
+			}
 			return reqs, errs
 		},
 	})

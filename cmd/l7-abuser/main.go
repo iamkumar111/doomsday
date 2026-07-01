@@ -9,6 +9,7 @@ import (
 	"github.com/kjsst/sh-mvdos/internal/guard"
 	"github.com/kjsst/sh-mvdos/internal/redisbus"
 	"github.com/kjsst/sh-mvdos/internal/vector"
+	"github.com/kjsst/sh-mvdos/internal/worker"
 	"github.com/kjsst/sh-mvdos/internal/worker/busloop"
 )
 
@@ -34,7 +35,7 @@ func main() {
 		Vector:     vectorName,
 		PolicyPath: policyPath,
 		Bus:        bus,
-		Run: func(ctx context.Context, ev redisbus.PhaseEvent) (uint64, uint64) {
+		Run: func(ctx context.Context, ev redisbus.PhaseEvent, prog *busloop.PhaseProgress) (uint64, uint64) {
 			mode := "baseline"
 			proxyFile := env("PROXY_FILE", "")
 			wsPath := ""
@@ -51,6 +52,10 @@ func main() {
 			if err != nil {
 				spec, _ = reg.Resolve("baseline")
 			}
+			if prog != nil {
+				prog.ActualMode = string(spec.ID)
+				prog.Protocol = spec.Protocol
+			}
 			scale := vector.Scale{
 				Workers:   ev.Workers,
 				Streams:   ev.Streams,
@@ -58,11 +63,29 @@ func main() {
 				ProxyFile: strings.TrimSpace(proxyFile),
 				WSPath:    wsPath,
 			}
-			res, runErr := vector.Run(ctx, spec, ev.TargetURL, scale)
+			w := worker.L7Abuser{
+				Target:    ev.TargetURL,
+				Workers:   scale.Workers,
+				Streams:   scale.Streams,
+				BatchSize: scale.Batch,
+				Mode:      mode,
+				ProxyFile: scale.ProxyFile,
+			}
+			if scale.Batch <= 0 && spec.ID == vector.IDRUDY {
+				w.BatchSize = 1
+			}
+			if prog != nil {
+				w.Progress = &worker.ProgressSink{
+					Attempts:        &prog.Attempts,
+					Errors:          &prog.Errors,
+					OpenConnections: &prog.OpenConnections,
+				}
+			}
+			reqs, errs, runErr := w.Run(ctx)
 			if runErr != nil && runErr != context.Canceled && runErr != context.DeadlineExceeded {
 				slog.Debug("vector run ended", "mode", mode, "err", runErr)
 			}
-			return res.Attempts, res.Errors
+			return reqs, errs
 		},
 	})
 }

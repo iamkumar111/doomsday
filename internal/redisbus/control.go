@@ -12,14 +12,24 @@ const (
 	workerKeyFmt  = "shmv:worker:%s"
 	runPhasesFmt  = "shmv:run:%s:phases"
 	runMetaFmt    = "shmv:run:%s:meta"
-	runStoppedFmt = "shmv:run:%s:stopped"
-	workerTTL     = 45 * time.Second
+	runStoppedFmt  = "shmv:run:%s:stopped"
+	runReceiptFmt  = "shmv:run:%s:receipt:%s"
+	workerTTL      = 45 * time.Second
 )
 
+type WorkerCapacity struct {
+	MaxWorkers int `json:"max_workers"`
+	MaxStreams int `json:"max_streams"`
+}
+
 type WorkerHeartbeat struct {
-	Vector string `json:"vector"`
-	Host   string `json:"host"`
-	TS     int64  `json:"ts"`
+	Vector      string         `json:"vector"`
+	Version     string         `json:"version,omitempty"`
+	Capacity    WorkerCapacity `json:"capacity,omitempty"`
+	ActiveRuns  int            `json:"active_runs,omitempty"`
+	LastSeen    int64          `json:"last_seen,omitempty"`
+	Host        string         `json:"host,omitempty"`
+	TS          int64          `json:"ts,omitempty"` // legacy alias for last_seen
 }
 
 // PublishPhase publishes to Pub/Sub and records the event for offline worker replay.
@@ -124,8 +134,12 @@ func (c *Client) TouchWorker(ctx context.Context, hb WorkerHeartbeat) error {
 	if hb.Vector == "" {
 		return fmt.Errorf("redisbus: empty worker vector")
 	}
+	now := time.Now().Unix()
+	if hb.LastSeen == 0 {
+		hb.LastSeen = now
+	}
 	if hb.TS == 0 {
-		hb.TS = time.Now().Unix()
+		hb.TS = hb.LastSeen
 	}
 	raw, err := json.Marshal(hb)
 	if err != nil {
@@ -163,8 +177,24 @@ func (c *Client) ListWorkers(ctx context.Context) ([]WorkerHeartbeat, error) {
 		}
 		hb, err := Decode[WorkerHeartbeat](raw)
 		if err == nil && hb.Vector != "" {
+			if hb.LastSeen == 0 && hb.TS > 0 {
+				hb.LastSeen = hb.TS
+			}
 			out = append(out, hb)
 		}
 	}
 	return out, iter.Err()
+}
+
+// WriteRunReceipt stores durable phase completion proof.
+func (c *Client) WriteRunReceipt(ctx context.Context, runID, phaseID string, receipt any) error {
+	if runID == "" || phaseID == "" {
+		return fmt.Errorf("redisbus: empty run or phase id")
+	}
+	raw, err := json.Marshal(receipt)
+	if err != nil {
+		return err
+	}
+	key := fmt.Sprintf(runReceiptFmt, runID, phaseID)
+	return c.rdb.Set(ctx, key, raw, 7*24*time.Hour).Err()
 }

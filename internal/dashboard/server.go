@@ -14,14 +14,13 @@ import (
 	"sync"
 	"time"
 
-	"fmt"
-
 	"github.com/kjsst/sh-mvdos/internal/fsutil"
 	"github.com/kjsst/sh-mvdos/internal/guard"
 	"github.com/kjsst/sh-mvdos/internal/labpolicy"
 	"github.com/kjsst/sh-mvdos/internal/learnattack"
 	"github.com/kjsst/sh-mvdos/internal/orchestrator"
 	"github.com/kjsst/sh-mvdos/internal/planner"
+	"github.com/kjsst/sh-mvdos/internal/registry"
 	"github.com/kjsst/sh-mvdos/internal/vector"
 	"github.com/kjsst/sh-mvdos/internal/recon"
 	"github.com/kjsst/sh-mvdos/internal/redisbus"
@@ -274,6 +273,7 @@ func (s *Server) ListenAndServe() error {
 	api("/api/validate", s.handleValidate)
 	api("/api/combos", s.handleCombos)
 	api("/api/vectors", s.handleVectors)
+	api("/api/workers", s.handleWorkers)
 	api("/api/plan/preview", s.handlePlanPreview)
 	api("/api/recon", s.handleRecon)
 	api("/api/recon/apply", s.handleReconApply)
@@ -622,14 +622,18 @@ func (s *Server) handleAttackStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	checkCtx, checkCancel := context.WithTimeout(r.Context(), 3*time.Second)
-	missing, err := s.bus.WorkersReady(checkCtx, required)
+	pf, err := registry.Preflight(checkCtx, s.bus, registry.PreflightRequest{
+		RequiredWorkers: required,
+		Workers:         workers,
+		Streams:         streams,
+	})
 	checkCancel()
 	if err != nil {
 		http.Error(w, "worker registry check failed: "+err.Error(), 503)
 		return
 	}
-	if len(missing) > 0 {
-		http.Error(w, fmt.Sprintf("required workers offline: %s — start vector containers first", strings.Join(missing, ", ")), 503)
+	if !pf.OK {
+		http.Error(w, registry.PreflightError(pf)+" — start vector containers first", 503)
 		return
 	}
 
@@ -1021,7 +1025,35 @@ func (s *Server) handleCombos(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	seen := make(map[string]struct{}, len(combos))
+	for _, c := range combos {
+		seen[c.ID] = struct{}{}
+	}
+	if plans, err := planner.LoadPlans(s.ComboPlansPath); err == nil {
+		for _, p := range plans {
+			if _, ok := seen[p.ID]; ok {
+				continue
+			}
+			combos = append(combos, orchestrator.Combo{ID: p.ID, Label: p.Label})
+			seen[p.ID] = struct{}{}
+		}
+	}
 	writeJSON(w, map[string]any{"combos": combos})
+}
+
+func (s *Server) handleWorkers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", 405)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	workers, err := s.bus.ListWorkers(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	writeJSON(w, map[string]any{"workers": workers})
 }
 
 // handlePolicyAllowed adds or removes hosts from allowed_hosts in lab-policy.yaml.

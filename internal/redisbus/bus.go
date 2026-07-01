@@ -53,12 +53,18 @@ type PhaseEvent struct {
 }
 
 type MetricsEvent struct {
-	RunID     string  `json:"run_id,omitempty"`
-	Vector    string  `json:"vector"`
-	Requests  uint64  `json:"requests"`
-	Errors    uint64  `json:"errors"`
-	RPS       float64 `json:"rps"`
-	Timestamp int64   `json:"timestamp"`
+	RunID           string  `json:"run_id,omitempty"`
+	PhaseID         string  `json:"phase_id,omitempty"`
+	Vector          string  `json:"vector"`
+	ActualMode      string  `json:"actual_mode,omitempty"`
+	Protocol        string  `json:"protocol,omitempty"`
+	Requests        uint64  `json:"requests"`
+	Errors          uint64  `json:"errors"`
+	OpenConnections uint64  `json:"open_connections,omitempty"`
+	LatencyP50Ms    float64 `json:"latency_p50_ms,omitempty"`
+	LatencyP99Ms    float64 `json:"latency_p99_ms,omitempty"`
+	RPS             float64 `json:"rps"`
+	Timestamp       int64   `json:"timestamp"`
 }
 
 type StopEvent struct {
@@ -68,14 +74,20 @@ type StopEvent struct {
 
 // MetricsFromPhase builds a metrics event tied to the originating run.
 func MetricsFromPhase(ev PhaseEvent, reqs, errs uint64, rps float64) MetricsEvent {
-	return MetricsEvent{
+	m := MetricsEvent{
 		RunID:     ev.RunID,
+		PhaseID:   ev.PhaseID,
 		Vector:    ev.Vector,
 		Requests:  reqs,
 		Errors:    errs,
 		RPS:       rps,
 		Timestamp: time.Now().Unix(),
 	}
+	if ev.Params != nil {
+		m.ActualMode = ev.Params["mode"]
+		m.Protocol = ev.Params["protocol"]
+	}
+	return m
 }
 
 func Decode[T any](payload string) (T, error) {

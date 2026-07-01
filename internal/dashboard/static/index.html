@@ -285,26 +285,8 @@
             </div>
             <div class="field">
               <label for="l7_mode">Attack mode</label>
-              <select id="l7_mode" onchange="updateScaleBindings()">
+              <select id="l7_mode">
                 <option value="">(from combo phases)</option>
-                <optgroup label="L7 (l7-abuser)">
-                  <option value="baseline">baseline</option>
-                  <option value="httpget">httpget</option>
-                  <option value="httppost">httppost</option>
-                  <option value="apiflood">apiflood</option>
-                  <option value="rudy">rudy</option>
-                  <option value="catalog-search">catalog-search (Magento)</option>
-                  <option value="wordpress">wordpress</option>
-                  <option value="shopify-search">shopify-search</option>
-                  <option value="cms-rotate">cms-rotate</option>
-                  <option value="graphql">graphql</option>
-                </optgroup>
-                <optgroup label="Protocol vectors">
-                  <option value="h2-rapid-reset">h2-rapid-reset</option>
-                  <option value="ws-flood">ws-flood</option>
-                  <option value="slowloris">slowloris</option>
-                  <option value="quic-burner">quic-burner</option>
-                </optgroup>
               </select>
             </div>
             <div class="field">
@@ -415,7 +397,12 @@
           </div>
 
           <div class="sub-block">
-            <div class="sub-label">Vector metrics</div>
+            <div class="sub-label">Workers online</div>
+            <div id="workers_wrap"><span class="empty">Checking registry…</span></div>
+          </div>
+
+          <div class="sub-block">
+            <div class="sub-label">Vector metrics (what ran)</div>
             <div id="metrics_wrap"><span class="empty">Waiting for worker reports…</span></div>
           </div>
 
@@ -436,65 +423,134 @@
 
 <script>
 let formDirty = false, lastBlockedHost = '', allowedHosts = [], lastStatusKey = '', pollTimer = null, forceActivePollUntil = 0;
+let vectorRegistry = [];
 const eventLog = [];
 const fields = ['target_url','combo','l7_mode','conductor_mode','workers','streams','watchdog','batch','proxy_file','ws_path','max_duration'];
 
-const STANDALONE_MODES = new Set(['h2-rapid-reset','ws-flood','slowloris','quic-burner']);
-const RUDY_MODES = new Set(['rudy']);
+const LEGACY_L7_MODES = [
+  { id: 'catalog-search', label: 'catalog-search (Magento)' },
+  { id: 'wordpress', label: 'wordpress' },
+  { id: 'shopify-search', label: 'shopify-search' },
+  { id: 'cms-rotate', label: 'cms-rotate' },
+  { id: 'graphql', label: 'graphql' },
+];
 
-function updateScaleBindings() {
+function findVectorSpec(id) {
+  if (!id) return null;
+  const key = id.trim().toLowerCase();
+  return vectorRegistry.find(v => v.id === key || (v.aliases || []).map(a => a.toLowerCase()).includes(key)) || null;
+}
+
+function applyVectorDefaults(spec) {
+  if (!spec?.defaults) return;
+  const d = spec.defaults;
+  if (d.workers > 0) document.getElementById('workers').value = d.workers;
+  if (d.streams > 0) document.getElementById('streams').value = d.streams;
+  if (d.batch > 0) document.getElementById('batch').value = d.batch;
+}
+
+function updateScaleBindings(applyDefaults = false) {
   const mode = document.getElementById('l7_mode').value.trim();
+  const spec = findVectorSpec(mode);
   const streams = document.getElementById('streams');
   const batch = document.getElementById('batch');
+  const workers = document.getElementById('workers');
+  const proxyField = document.getElementById('proxy_file').closest('.field');
   const streamsLabel = document.getElementById('streams_label');
   const batchLabel = document.getElementById('batch_label');
   const hint = document.getElementById('scale_hint');
   const wsField = document.getElementById('ws_path_field');
 
-  wsField.style.display = (mode === 'ws-flood') ? 'block' : 'none';
+  if (applyDefaults && spec) applyVectorDefaults(spec);
 
-  if (STANDALONE_MODES.has(mode)) {
+  if (!mode) {
     streams.disabled = false;
     batch.disabled = false;
-    if (mode === 'h2-rapid-reset') {
-      streamsLabel.textContent = 'H2 streams';
-      batchLabel.textContent = 'Reset batch';
-      hint.textContent = 'Workers × H2 streams × reset batch → h2-rapid-reset vector.';
-      hint.className = 'alert';
-    } else if (mode === 'ws-flood') {
-      streamsLabel.textContent = 'WS conns / worker';
-      batchLabel.textContent = 'Msgs / session';
-      hint.textContent = 'Set WebSocket path when known. Streams = concurrent sockets per worker; Batch = messages per session.';
-      hint.className = 'alert';
-    } else {
-      streamsLabel.textContent = 'Streams';
-      batchLabel.textContent = 'Batch';
-      hint.textContent = `Standalone vector: ${mode}. Combo phases are overridden.`;
-      hint.className = 'alert';
-    }
+    workers.disabled = false;
+    proxyField.style.display = '';
+    wsField.style.display = 'none';
+    streamsLabel.textContent = 'Streams';
+    batchLabel.textContent = 'Batch';
+    hint.textContent = 'Empty attack mode uses combo planner with weighted scale split.';
+    hint.className = 'alert';
     return;
   }
 
-  if (RUDY_MODES.has(mode)) {
-    streams.disabled = true;
-    batch.disabled = true;
+  const cap = spec?.capabilities || { workers: true, streams: true, batch: true, paths: false, proxy_file: true };
+  workers.disabled = !cap.workers;
+  streams.disabled = !cap.streams;
+  batch.disabled = !cap.batch;
+  proxyField.style.display = cap.proxy_file ? '' : 'none';
+  wsField.style.display = (cap.paths && mode === 'ws-flood') ? 'block' : 'none';
+
+  if (mode === 'h2-rapid-reset') {
+    streamsLabel.textContent = 'H2 streams';
+    batchLabel.textContent = 'Reset batch';
+  } else if (mode === 'ws-flood') {
+    streamsLabel.textContent = 'WS conns / worker';
+    batchLabel.textContent = 'Msgs / session';
+  } else if (!cap.streams && !cap.batch) {
     streamsLabel.textContent = 'Streams (n/a)';
     batchLabel.textContent = 'Batch (n/a)';
-    hint.textContent = 'RUDY: one slow POST per worker. Only Workers affects load.';
-    hint.className = 'alert warn';
-    return;
+  } else {
+    streamsLabel.textContent = cap.streams ? 'Parallel / streams' : 'Streams (n/a)';
+    batchLabel.textContent = cap.batch ? 'Batch size' : 'Batch (n/a)';
   }
 
-  streams.disabled = false;
-  batch.disabled = false;
-  streamsLabel.textContent = 'Parallel / batch';
-  batchLabel.textContent = 'Batch size';
-  if (!mode) {
-    hint.textContent = 'Empty attack mode uses combo phase params. Scale fields apply per vector in the combo.';
+  if (spec) {
+    const parts = [`${spec.label} · ${spec.protocol} · worker ${spec.worker}`];
+    if (!cap.streams && !cap.batch) parts.push('workers only');
+    if (cap.paths && mode === 'ws-flood') parts.push('set WebSocket path');
+    hint.textContent = parts.join(' — ');
+    hint.className = (!cap.streams && !cap.batch) ? 'alert warn' : 'alert';
   } else {
-    hint.textContent = 'L7 mode: Workers × Batch × Parallel/batch in-flight requests. Streams does not apply to h2-rapid-reset/ws-flood unless selected as attack mode.';
+    hint.textContent = `Legacy L7 mode: ${mode}. Uses l7-abuser with combo override.`;
+    hint.className = 'alert';
   }
-  hint.className = 'alert';
+}
+
+async function loadVectors() {
+  try {
+    const j = await (await apiFetch('/api/vectors')).json();
+    vectorRegistry = j.vectors || [];
+    const sel = document.getElementById('l7_mode');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">(from combo phases)</option>';
+    const l7 = [], proto = [];
+    vectorRegistry.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.id;
+      opt.textContent = v.label || v.id;
+      if (v.worker === 'l7-abuser') l7.push(opt);
+      else proto.push(opt);
+    });
+    if (l7.length) {
+      const g = document.createElement('optgroup');
+      g.label = 'Typed vectors (l7-abuser)';
+      l7.forEach(o => g.appendChild(o));
+      sel.appendChild(g);
+    }
+    if (proto.length) {
+      const g = document.createElement('optgroup');
+      g.label = 'Protocol vectors';
+      proto.forEach(o => g.appendChild(o));
+      sel.appendChild(g);
+    }
+    if (LEGACY_L7_MODES.length) {
+      const g = document.createElement('optgroup');
+      g.label = 'CMS / legacy L7';
+      LEGACY_L7_MODES.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.label;
+        g.appendChild(opt);
+      });
+      sel.appendChild(g);
+    }
+    sel.value = current;
+  } catch (e) {
+    logEvent('Vector registry load failed', 'warn');
+  }
 }
 
 const qp = new URLSearchParams(location.search);
@@ -722,13 +778,26 @@ async function stopAttack() {
   refreshStatus();
 }
 
+function renderWorkers(workers) {
+  const wrap = document.getElementById('workers_wrap');
+  const list = workers || [];
+  if (!list.length) { wrap.innerHTML = '<span class="empty">No workers heartbeating — start vector containers</span>'; return; }
+  wrap.innerHTML = `<table class="metrics-table"><thead><tr><th>Vector</th><th>Host</th><th>Runs</th><th>Cap</th></tr></thead><tbody>${
+    list.map(w => {
+      const cap = w.capacity || {};
+      const capTxt = cap.max_workers ? `${cap.max_workers}w` : '—';
+      return `<tr><td>${w.vector}</td><td>${w.host || '—'}</td><td>${w.active_runs ?? 0}</td><td>${capTxt}</td></tr>`;
+    }).join('')}</tbody></table>`;
+}
+
 function renderMetrics(metrics) {
   const wrap = document.getElementById('metrics_wrap');
   const keys = Object.keys(metrics || {});
   if (!keys.length) { wrap.innerHTML = '<span class="empty">Waiting for worker reports…</span>'; return; }
-  wrap.innerHTML = `<table class="metrics-table"><thead><tr><th>Vector</th><th>RPS</th><th>Req</th><th>Err</th></tr></thead><tbody>${
+  wrap.innerHTML = `<table class="metrics-table"><thead><tr><th>Vector</th><th>Mode</th><th>Proto</th><th>Open</th><th>RPS</th><th>Req</th><th>Err</th></tr></thead><tbody>${
     keys.sort().map(v => { const m = metrics[v];
-      return `<tr><td>${v}</td><td>${fmtNum(m.rps)}</td><td>${fmtNum(m.requests)}</td><td>${fmtNum(m.errors)}</td></tr>`;
+      const open = m.open_connections > 0 ? fmtNum(m.open_connections) : '—';
+      return `<tr><td>${v}</td><td>${m.actual_mode || '—'}</td><td>${m.protocol || '—'}</td><td>${open}</td><td>${fmtNum(m.rps)}</td><td>${fmtNum(m.requests)}</td><td>${fmtNum(m.errors)}</td></tr>`;
     }).join('')}</tbody></table>`;
 }
 
@@ -803,6 +872,7 @@ function renderLivePanel(j) {
   rem.textContent = active && remaining != null ? fmtDuration(remaining) : '—';
   rem.className = 'v ' + (remaining != null && remaining < 30 ? 'warn' : active ? 'ok' : '');
 
+  renderWorkers(j.workers);
   renderMetrics(j.metrics);
   renderPhases(j.last_phases);
   renderLearn(j.learn);
@@ -958,7 +1028,9 @@ async function applyRecon() {
     logEvent('API token required — reload with ?token=YOUR_TOKEN', 'err');
     return;
   }
+  await loadVectors();
   await loadPolicy();
+  document.getElementById('l7_mode').addEventListener('change', () => updateScaleBindings(true));
   logEvent('Dashboard ready', 'info');
   schedulePoll(false);
   refreshStatus();

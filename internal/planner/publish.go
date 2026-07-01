@@ -21,6 +21,9 @@ func ToPhaseEvents(plan RunPlan, runID string, start time.Time) []redisbus.Phase
 		if ph.Vector == "httpget" || ph.Vector == "httppost" || ph.Vector == "apiflood" || ph.Vector == "rudy" || ph.Vector == "baseline" {
 			params["mode"] = ph.Vector
 		}
+		if ph.Protocol != "" {
+			params["protocol"] = ph.Protocol
+		}
 		ev := redisbus.PhaseEvent{
 			RunID:     runID,
 			PhaseID:   ph.PhaseID,

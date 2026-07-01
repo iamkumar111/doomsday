@@ -34,7 +34,7 @@ func main() {
 		Vector:     vectorName,
 		PolicyPath: policyPath,
 		Bus:        bus,
-		Run: func(ctx context.Context, ev redisbus.PhaseEvent) (uint64, uint64) {
+		Run: func(ctx context.Context, ev redisbus.PhaseEvent, prog *busloop.PhaseProgress) (uint64, uint64) {
 			wsPath := ""
 			if ev.Params != nil {
 				wsPath = ev.Params["ws_path"]
@@ -45,7 +45,15 @@ func main() {
 				Batch:   ev.BatchSize,
 				WSPath:  wsPath,
 			}
+			if prog != nil {
+				prog.ActualMode = string(spec.ID)
+				prog.Protocol = spec.Protocol
+			}
 			res, _ := vector.Run(ctx, spec, ev.TargetURL, scale)
+			if prog != nil {
+				prog.Attempts.Store(res.Attempts)
+				prog.Errors.Store(res.Errors)
+			}
 			return res.Attempts, res.Errors
 		},
 	})

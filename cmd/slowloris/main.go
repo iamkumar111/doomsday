@@ -27,9 +27,18 @@ func main() {
 		Vector:     vector,
 		PolicyPath: policyPath,
 		Bus:        bus,
-		Run: func(ctx context.Context, ev redisbus.PhaseEvent) (uint64, uint64) {
+		Run: func(ctx context.Context, ev redisbus.PhaseEvent, prog *busloop.PhaseProgress) (uint64, uint64) {
+			if prog != nil {
+				prog.ActualMode = "slowloris"
+				prog.Protocol = "http/1.1"
+			}
 			w := worker.Slowloris{Target: ev.TargetURL, Workers: ev.Workers}
 			reqs, errs, _ := w.Run(ctx)
+			if prog != nil {
+				prog.Attempts.Store(reqs)
+				prog.Errors.Store(errs)
+				prog.OpenConnections.Store(uint64(ev.Workers))
+			}
 			return reqs, errs
 		},
 	})

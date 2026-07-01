@@ -5,21 +5,33 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kjsst/sh-mvdos/internal/guard"
 	"github.com/kjsst/sh-mvdos/internal/labpolicy"
+	"github.com/kjsst/sh-mvdos/internal/registry"
 	"github.com/kjsst/sh-mvdos/internal/redisbus"
 	"github.com/kjsst/sh-mvdos/internal/watchdog"
 )
 
+// PhaseProgress holds live counters published every 2s during a phase.
+type PhaseProgress struct {
+	Attempts        atomic.Uint64
+	Errors          atomic.Uint64
+	OpenConnections atomic.Uint64
+	ActualMode      string
+	Protocol        string
+}
+
 // RunFunc executes one phase until ctx is canceled.
-type RunFunc func(ctx context.Context, ev redisbus.PhaseEvent) (reqs, errs uint64)
+type RunFunc func(ctx context.Context, ev redisbus.PhaseEvent, prog *PhaseProgress) (reqs, errs uint64)
 
 // Options configures a Redis phase/stop worker loop.
 type Options struct {
 	Vector     string
 	Vectors    []string // optional aliases; defaults to Vector
+	Version    string
 	PolicyPath string
 	Bus        *redisbus.Client
 	Run        RunFunc
@@ -72,7 +84,7 @@ func Serve(ctx context.Context, opt Options) {
 		active: make(map[string]activeRun),
 	}
 
-	go heartbeatLoop(ctx, opt.Bus, opt.Vector)
+	go heartbeatLoop(ctx, st)
 	go replayLoop(ctx, opt, st.replayPhase)
 	st.replayOnce()
 
@@ -191,11 +203,30 @@ func (st *serveState) startPhaseInternal(ev redisbus.PhaseEvent, replay bool) {
 			st.mu.Unlock()
 			runCancel()
 		}()
+		prog := &PhaseProgress{}
+		if ev.Params != nil {
+			prog.ActualMode = ev.Params["mode"]
+			prog.Protocol = ev.Params["protocol"]
+		}
+		liveCtx, liveCancel := context.WithCancel(runCtx)
+		defer liveCancel()
+		go st.liveMetricsLoop(liveCtx, ev, prog)
 		start := time.Now()
-		reqs, errs := st.opt.Run(runCtx, ev)
-		_ = st.opt.Bus.Publish(context.Background(), redisbus.ChannelMetrics, redisbus.MetricsFromPhase(
-			ev, reqs, errs, float64(reqs)/time.Since(start).Seconds(),
-		))
+		reqs, errs := st.opt.Run(runCtx, ev, prog)
+		elapsed := time.Since(start).Seconds()
+		if elapsed < 0.001 {
+			elapsed = 0.001
+		}
+		final := redisbus.MetricsFromPhase(ev, reqs, errs, float64(reqs)/elapsed)
+		final.OpenConnections = prog.OpenConnections.Load()
+		if prog.ActualMode != "" {
+			final.ActualMode = prog.ActualMode
+		}
+		if prog.Protocol != "" {
+			final.Protocol = prog.Protocol
+		}
+		_ = st.opt.Bus.Publish(context.Background(), redisbus.ChannelMetrics, final)
+		_ = st.opt.Bus.WriteRunReceipt(context.Background(), ev.RunID, ev.PhaseID, final)
 	}(ev, key, gen)
 }
 
@@ -210,13 +241,64 @@ func (st *serveState) cancelAll(match func(activeRun) bool) {
 	}
 }
 
-func heartbeatLoop(ctx context.Context, bus *redisbus.Client, vector string) {
+func (st *serveState) activeRunCount() int {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return len(st.active)
+}
+
+func (st *serveState) liveMetricsLoop(ctx context.Context, ev redisbus.PhaseEvent, prog *PhaseProgress) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	publish := func() {
+		reqs := prog.Attempts.Load()
+		errs := prog.Errors.Load()
+		m := redisbus.MetricsFromPhase(ev, reqs, errs, 0)
+		m.OpenConnections = prog.OpenConnections.Load()
+		if prog.ActualMode != "" {
+			m.ActualMode = prog.ActualMode
+		}
+		if prog.Protocol != "" {
+			m.Protocol = prog.Protocol
+		}
+		_ = st.opt.Bus.Publish(context.Background(), redisbus.ChannelMetrics, m)
+	}
+	publish()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			publish()
+		}
+	}
+}
+
+func heartbeatLoop(ctx context.Context, st *serveState) {
 	host, _ := os.Hostname()
+	vector := st.opt.Vector
+	version := st.opt.Version
+	if version == "" {
+		version = os.Getenv("SHMV_VERSION")
+	}
+	if version == "" {
+		version = "dev"
+	}
+	capSpec := registry.LookupCapacity(vector)
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	touch := func() {
 		tctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		_ = bus.TouchWorker(tctx, redisbus.WorkerHeartbeat{Vector: vector, Host: host})
+		_ = st.opt.Bus.TouchWorker(tctx, redisbus.WorkerHeartbeat{
+			Vector:     vector,
+			Version:    version,
+			Host:       host,
+			ActiveRuns: st.activeRunCount(),
+			Capacity: redisbus.WorkerCapacity{
+				MaxWorkers: capSpec.MaxWorkers,
+				MaxStreams: capSpec.MaxStreams,
+			},
+		})
 		cancel()
 	}
 	touch()
