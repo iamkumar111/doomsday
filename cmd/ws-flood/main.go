@@ -28,7 +28,17 @@ func main() {
 		PolicyPath: policyPath,
 		Bus:        bus,
 		Run: func(ctx context.Context, ev redisbus.PhaseEvent) (uint64, uint64) {
-			w := worker.WSFlood{Target: ev.TargetURL, Workers: ev.Workers}
+			wsPath := ""
+			if ev.Params != nil {
+				wsPath = ev.Params["ws_path"]
+			}
+			w := worker.WSFlood{
+				Target:    ev.TargetURL,
+				Workers:   ev.Workers,
+				Streams:   ev.Streams,
+				BatchSize: ev.BatchSize,
+				WSPath:    wsPath,
+			}
 			reqs, errs, _ := w.Run(ctx)
 			return reqs, errs
 		},

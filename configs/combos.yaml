@@ -38,3 +38,11 @@ combos:
   - id: rudy-stress
     label: Slayer RUDY parity (slow POST hold)
     phases: [l7-rudy]
+
+  - id: h2-only
+    label: HTTP/2 rapid reset only (h2-rapid-reset)
+    phases: [h2-rapid]
+
+  - id: ws-only
+    label: WebSocket flood only (ws-flood)
+    phases: [ws-stress]

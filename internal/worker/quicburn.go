@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net/http"
 	"sync/atomic"
@@ -12,7 +13,7 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
-// QUICBurner stresses HTTP/3 when available; falls back to high-volume HTTPS GET flood.
+// QUICBurner stresses HTTP/3 only.
 type QUICBurner struct {
 	Target    string
 	Workers   int
@@ -27,7 +28,10 @@ func (w *QUICBurner) Run(ctx context.Context) (uint64, uint64, error) {
 		w.BatchSize = 50
 	}
 
-	client := w.newClient()
+	client, err := w.newClient()
+	if err != nil {
+		return 0, 0, err
+	}
 	var reqs, errs atomic.Uint64
 	done := make(chan struct{}, w.Workers)
 	for i := 0; i < w.Workers; i++ {
@@ -70,7 +74,7 @@ func (w *QUICBurner) Run(ctx context.Context) (uint64, uint64, error) {
 	return reqs.Load(), errs.Load(), ctx.Err()
 }
 
-func (w *QUICBurner) newClient() *http.Client {
+func (w *QUICBurner) newClient() (*http.Client, error) {
 	roundTripper := &http3.RoundTripper{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12},
 	}
@@ -78,19 +82,11 @@ func (w *QUICBurner) newClient() *http.Client {
 		Transport: roundTripper,
 		Timeout:   10 * time.Second,
 	}
-	// Probe once; http3 falls through to HTTPS on failure for many targets.
+	// Probe once and fail closed if the target does not negotiate HTTP/3.
 	req, _ := http.NewRequest(http.MethodHead, w.Target, nil)
 	if _, err := client.Do(req); err != nil {
 		_ = roundTripper.Close()
-		return &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig:     &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12},
-				MaxIdleConnsPerHost: 512,
-				MaxConnsPerHost:     0,
-				ForceAttemptHTTP2:   false,
-			},
-			Timeout: 10 * time.Second,
-		}
+		return nil, fmt.Errorf("quicburn: target is not serving HTTP/3: %w", err)
 	}
-	return client
+	return client, nil
 }

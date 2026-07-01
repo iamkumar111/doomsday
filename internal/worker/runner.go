@@ -95,7 +95,7 @@ var Catalog = []Spec{
 	{
 		ID: "quic-burner", Label: "QUIC / HTTP3 stress", Layer: "L4/L7",
 		VictimNeed: "HTTP/3 victim", RedisVector: "quic-burner",
-		Description: "Transport stress; falls back to HTTPS when h3 unavailable",
+		Description: "Transport stress against HTTP/3 targets only",
 	},
 	{
 		ID: "slowloris", Label: "Slowloris", Layer: "L7",
@@ -130,27 +130,27 @@ func NewRunner(id string, cfg Config) (Runner, error) {
 	}
 	switch id {
 	case "l7-baseline":
-		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, BatchSize: cfg.BatchSize, Mode: "baseline"}, nil
+		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, Streams: cfg.Streams, BatchSize: cfg.BatchSize, Mode: "baseline"}, nil
 	case "l7-httpget":
-		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, BatchSize: cfg.BatchSize, Mode: "httpget"}, nil
+		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, Streams: cfg.Streams, BatchSize: cfg.BatchSize, Mode: "httpget"}, nil
 	case "l7-post":
-		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, BatchSize: cfg.BatchSize, Mode: "httppost"}, nil
+		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, Streams: cfg.Streams, BatchSize: cfg.BatchSize, Mode: "httppost"}, nil
 	case "l7-apiflood":
-		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, BatchSize: cfg.BatchSize, Mode: "apiflood"}, nil
+		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, Streams: cfg.Streams, BatchSize: cfg.BatchSize, Mode: "apiflood"}, nil
 	case "l7-rudy":
 		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, BatchSize: cfg.BatchSize, Mode: "rudy"}, nil
 	case "l7-wordpress":
-		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, BatchSize: cfg.BatchSize, Mode: "wordpress"}, nil
+		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, Streams: cfg.Streams, BatchSize: cfg.BatchSize, Mode: "wordpress"}, nil
 	case "l7-graphql":
-		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, BatchSize: cfg.BatchSize, Mode: "graphql"}, nil
+		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, Streams: cfg.Streams, BatchSize: cfg.BatchSize, Mode: "graphql"}, nil
 	case "l7-magento-search":
-		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, BatchSize: cfg.BatchSize, Mode: "catalog-search", CMS: "Magento"}, nil
+		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, Streams: cfg.Streams, BatchSize: cfg.BatchSize, Mode: "catalog-search", CMS: "Magento"}, nil
 	case "l7-magento-cart":
-		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, BatchSize: cfg.BatchSize, Mode: "magento-cart", CMS: "Magento"}, nil
+		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, Streams: cfg.Streams, BatchSize: cfg.BatchSize, Mode: "magento-cart", CMS: "Magento"}, nil
 	case "l7-shopify-search":
-		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, BatchSize: cfg.BatchSize, Mode: "shopify-search", CMS: "Shopify"}, nil
+		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, Streams: cfg.Streams, BatchSize: cfg.BatchSize, Mode: "shopify-search", CMS: "Shopify"}, nil
 	case "l7-cms-rotate":
-		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, BatchSize: cfg.BatchSize, Mode: "cms-rotate", CMS: cfg.CMS}, nil
+		return &L7Abuser{Target: cfg.Target, Workers: cfg.Workers, Streams: cfg.Streams, BatchSize: cfg.BatchSize, Mode: "cms-rotate", CMS: cfg.CMS}, nil
 	case "h2-rapid-reset":
 		return &H2RapidReset{Target: cfg.Target, Workers: cfg.Workers, Streams: cfg.Streams, BatchSize: cfg.BatchSize}, nil
 	case "quic-burner":
@@ -158,7 +158,7 @@ func NewRunner(id string, cfg Config) (Runner, error) {
 	case "slowloris":
 		return &Slowloris{Target: cfg.Target, Workers: cfg.Workers}, nil
 	case "ws-flood":
-		return &WSFlood{Target: cfg.Target, Workers: cfg.Workers}, nil
+		return &WSFlood{Target: cfg.Target, Workers: cfg.Workers, Streams: cfg.Streams, BatchSize: cfg.BatchSize}, nil
 	default:
 		return nil, fmt.Errorf("unknown vector %q", id)
 	}

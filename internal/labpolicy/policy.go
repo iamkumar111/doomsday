@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -13,6 +14,14 @@ import (
 )
 
 var policySaveMu sync.Mutex
+
+const (
+	MaxWorkers            = 2048
+	MaxStreams            = 10000
+	MaxBatchSize          = 1000
+	MaxDurationSec        = 24 * 60 * 60
+	MaxWatchdogCPUPercent = 100
+)
 
 type Policy struct {
 	LabMode            string   `yaml:"lab_mode" json:"lab_mode"`
@@ -28,6 +37,7 @@ type Policy struct {
 	Streams            int      `yaml:"streams" json:"streams"`
 	BatchSize          int      `yaml:"batch_size" json:"batch_size"`
 	ProxyFile          string   `yaml:"proxy_file" json:"proxy_file,omitempty"`
+	WSPath             string   `yaml:"ws_path" json:"ws_path,omitempty"`
 }
 
 const DefaultPath = "data/lab-policy.yaml"
@@ -59,6 +69,53 @@ func (p *Policy) Save(path string) error {
 		return err
 	}
 	return fsutil.WriteFile(path, raw, 0o644)
+}
+
+func (p *Policy) ValidateRuntimeBounds(policyPath string) error {
+	if p.Workers < 1 || p.Workers > MaxWorkers {
+		return fmt.Errorf("labpolicy: workers must be 1..%d", MaxWorkers)
+	}
+	if p.Streams < 1 || p.Streams > MaxStreams {
+		return fmt.Errorf("labpolicy: streams must be 1..%d", MaxStreams)
+	}
+	if p.BatchSize < 1 || p.BatchSize > MaxBatchSize {
+		return fmt.Errorf("labpolicy: batch_size must be 1..%d", MaxBatchSize)
+	}
+	if p.MaxDurationSec < 1 || p.MaxDurationSec > MaxDurationSec {
+		return fmt.Errorf("labpolicy: max_duration_sec must be 1..%d", MaxDurationSec)
+	}
+	if p.WatchdogCPUPercent < 0 || p.WatchdogCPUPercent > MaxWatchdogCPUPercent {
+		return fmt.Errorf("labpolicy: watchdog_cpu_percent must be 0..%d", MaxWatchdogCPUPercent)
+	}
+	return p.ValidateProxyFile(policyPath)
+}
+
+func (p *Policy) ValidateProxyFile(policyPath string) error {
+	proxyFile := strings.TrimSpace(p.ProxyFile)
+	if proxyFile == "" {
+		return nil
+	}
+	clean := filepath.Clean(proxyFile)
+	if strings.Contains(clean, "..") {
+		return fmt.Errorf("labpolicy: proxy_file must not contain path traversal")
+	}
+	if filepath.IsAbs(clean) {
+		if clean == "/data" || strings.HasPrefix(clean, "/data/") {
+			return nil
+		}
+		return fmt.Errorf("labpolicy: absolute proxy_file must be under /data")
+	}
+	baseDir := filepath.Dir(policyPath)
+	if baseDir == "." || baseDir == "" {
+		baseDir = filepath.Dir(DefaultPath)
+	}
+	full := filepath.Clean(filepath.Join(baseDir, clean))
+	allowedRoot := filepath.Clean(baseDir)
+	rel, err := filepath.Rel(allowedRoot, full)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("labpolicy: relative proxy_file must stay under %s", allowedRoot)
+	}
+	return nil
 }
 
 func dirOf(path string) string {
@@ -109,6 +166,14 @@ func (p *Policy) TargetHost() (string, error) {
 		return "", fmt.Errorf("labpolicy: empty target host")
 	}
 	return strings.ToLower(host), nil
+}
+
+// EffectiveAttackMode returns attack_mode or legacy l7_mode.
+func (p *Policy) EffectiveAttackMode() string {
+	if strings.TrimSpace(p.L7Mode) != "" {
+		return strings.TrimSpace(p.L7Mode)
+	}
+	return ""
 }
 
 func (p *Policy) IsHostAllowed(host string) bool {

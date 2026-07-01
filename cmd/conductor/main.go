@@ -37,6 +37,10 @@ func main() {
 		<-ctx.Done()
 		return
 	}
+	if err := policy.ValidateRuntimeBounds(policyPath); err != nil {
+		slog.Error("policy runtime bounds", "err", err)
+		os.Exit(1)
+	}
 
 	if err := guard.MustValidatePolicyTarget(policyPath, policy.TargetURL); err != nil {
 		slog.Error("target not authorized for auto run", "err", err)
@@ -85,7 +89,7 @@ func main() {
 			slog.Error("refusing phase publish — target no longer authorized", "phase", ph.ID, "err", err)
 			continue
 		}
-		ev := orchestrator.BuildPhaseEvent(ph, runID, policy.TargetURL, policy.Workers, policy.Streams, policy.BatchSize, start, expires, policy.L7Mode, policy.ProxyFile)
+		ev := orchestrator.BuildPhaseEvent(ph, runID, policy.TargetURL, policy.Workers, policy.Streams, policy.BatchSize, start, expires, policy.L7Mode, policy.ProxyFile, policy.WSPath)
 		ev.At = targetTime
 		if err := bus.PublishPhase(ctx, ev); err != nil {
 			slog.Error("publish", "phase", ph.ID, "err", err)

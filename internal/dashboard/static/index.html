@@ -284,19 +284,27 @@
               <select id="combo"></select>
             </div>
             <div class="field">
-              <label for="l7_mode">L7 mode</label>
-              <select id="l7_mode">
+              <label for="l7_mode">Attack mode</label>
+              <select id="l7_mode" onchange="updateScaleBindings()">
                 <option value="">(from combo phases)</option>
-                <option value="baseline">baseline</option>
-                <option value="httpget">httpget</option>
-                <option value="httppost">httppost</option>
-                <option value="apiflood">apiflood</option>
-                <option value="catalog-search">catalog-search (Magento)</option>
-                <option value="wordpress">wordpress</option>
-                <option value="shopify-search">shopify-search</option>
-                <option value="cms-rotate">cms-rotate</option>
-                <option value="graphql">graphql</option>
-                <option value="rudy">rudy</option>
+                <optgroup label="L7 (l7-abuser)">
+                  <option value="baseline">baseline</option>
+                  <option value="httpget">httpget</option>
+                  <option value="httppost">httppost</option>
+                  <option value="apiflood">apiflood</option>
+                  <option value="rudy">rudy</option>
+                  <option value="catalog-search">catalog-search (Magento)</option>
+                  <option value="wordpress">wordpress</option>
+                  <option value="shopify-search">shopify-search</option>
+                  <option value="cms-rotate">cms-rotate</option>
+                  <option value="graphql">graphql</option>
+                </optgroup>
+                <optgroup label="Protocol vectors">
+                  <option value="h2-rapid-reset">h2-rapid-reset</option>
+                  <option value="ws-flood">ws-flood</option>
+                  <option value="slowloris">slowloris</option>
+                  <option value="quic-burner">quic-burner</option>
+                </optgroup>
               </select>
             </div>
             <div class="field">
@@ -317,13 +325,18 @@
             <label for="proxy_file">Proxy file (optional)</label>
             <input id="proxy_file" type="text" placeholder="/data/proxies.txt" />
           </div>
+          <div class="field" id="ws_path_field" style="margin-top:.85rem;display:none">
+            <label for="ws_path">WebSocket path</label>
+            <input id="ws_path" type="text" placeholder="/ws or /socket.io/" />
+          </div>
+          <div class="alert" id="scale_hint" style="margin-top:.65rem;font-size:.82rem"></div>
           <div class="field-grid-3" style="margin-top:.85rem">
             <div class="field">
-              <label for="streams">Streams</label>
+              <label for="streams" id="streams_label">Streams</label>
               <input id="streams" type="number" min="1" max="10000" value="100" />
             </div>
             <div class="field">
-              <label for="batch">Batch</label>
+              <label for="batch" id="batch_label">Batch</label>
               <input id="batch" type="number" min="1" max="1000" value="50" />
             </div>
             <div class="field">
@@ -417,7 +430,65 @@
 <script>
 let formDirty = false, lastBlockedHost = '', allowedHosts = [], lastStatusKey = '', pollTimer = null, forceActivePollUntil = 0;
 const eventLog = [];
-const fields = ['target_url','combo','l7_mode','conductor_mode','workers','streams','watchdog','batch','proxy_file'];
+const fields = ['target_url','combo','l7_mode','conductor_mode','workers','streams','watchdog','batch','proxy_file','ws_path'];
+
+const STANDALONE_MODES = new Set(['h2-rapid-reset','ws-flood','slowloris','quic-burner']);
+const RUDY_MODES = new Set(['rudy']);
+
+function updateScaleBindings() {
+  const mode = document.getElementById('l7_mode').value.trim();
+  const streams = document.getElementById('streams');
+  const batch = document.getElementById('batch');
+  const streamsLabel = document.getElementById('streams_label');
+  const batchLabel = document.getElementById('batch_label');
+  const hint = document.getElementById('scale_hint');
+  const wsField = document.getElementById('ws_path_field');
+
+  wsField.style.display = (mode === 'ws-flood') ? 'block' : 'none';
+
+  if (STANDALONE_MODES.has(mode)) {
+    streams.disabled = false;
+    batch.disabled = false;
+    if (mode === 'h2-rapid-reset') {
+      streamsLabel.textContent = 'H2 streams';
+      batchLabel.textContent = 'Reset batch';
+      hint.textContent = 'Workers × H2 streams × reset batch → h2-rapid-reset vector.';
+      hint.className = 'alert';
+    } else if (mode === 'ws-flood') {
+      streamsLabel.textContent = 'WS conns / worker';
+      batchLabel.textContent = 'Msgs / session';
+      hint.textContent = 'Set WebSocket path when known. Streams = concurrent sockets per worker; Batch = messages per session.';
+      hint.className = 'alert';
+    } else {
+      streamsLabel.textContent = 'Streams';
+      batchLabel.textContent = 'Batch';
+      hint.textContent = `Standalone vector: ${mode}. Combo phases are overridden.`;
+      hint.className = 'alert';
+    }
+    return;
+  }
+
+  if (RUDY_MODES.has(mode)) {
+    streams.disabled = true;
+    batch.disabled = true;
+    streamsLabel.textContent = 'Streams (n/a)';
+    batchLabel.textContent = 'Batch (n/a)';
+    hint.textContent = 'RUDY: one slow POST per worker. Only Workers affects load.';
+    hint.className = 'alert warn';
+    return;
+  }
+
+  streams.disabled = false;
+  batch.disabled = false;
+  streamsLabel.textContent = 'Parallel / batch';
+  batchLabel.textContent = 'Batch size';
+  if (!mode) {
+    hint.textContent = 'Empty attack mode uses combo phase params. Scale fields apply per vector in the combo.';
+  } else {
+    hint.textContent = 'L7 mode: Workers × Batch × Parallel/batch in-flight requests. Streams does not apply to h2-rapid-reset/ws-flood unless selected as attack mode.';
+  }
+  hint.className = 'alert';
+}
 
 const qp = new URLSearchParams(location.search);
 if (qp.get('token')) localStorage.setItem('lab_token', qp.get('token'));
@@ -492,7 +563,9 @@ async function loadPolicy() {
   document.getElementById('watchdog').value = p.watchdog_cpu_percent ?? 0;
   document.getElementById('batch').value = p.batch_size || 50;
   document.getElementById('proxy_file').value = p.proxy_file || '';
+  document.getElementById('ws_path').value = p.ws_path || '';
   allowedHosts = p.allowed_hosts || [];
+  updateScaleBindings();
   renderAllowedHosts();
   formDirty = false;
   document.getElementById('unsaved').style.display = 'none';
@@ -524,7 +597,8 @@ function draftPolicy() {
     streams: +document.getElementById('streams').value,
     watchdog_cpu_percent: +document.getElementById('watchdog').value,
     batch_size: +document.getElementById('batch').value,
-    proxy_file: document.getElementById('proxy_file').value.trim()
+    proxy_file: document.getElementById('proxy_file').value.trim(),
+    ws_path: document.getElementById('ws_path').value.trim()
   };
 }
 

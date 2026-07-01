@@ -28,18 +28,31 @@ func l7ModeCMSHint(l7Mode string) string {
 	}
 }
 
-// PickScale chooses the higher of phase and policy scale so policy intensity is not capped by YAML defaults.
+// PickScale treats the dashboard/policy value as the run ceiling.
 func PickScale(phaseVal, policyVal int) int {
-	if phaseVal <= 0 {
-		return policyVal
-	}
 	if policyVal <= 0 {
 		return phaseVal
 	}
-	if phaseVal > policyVal {
+	if phaseVal <= 0 {
+		return policyVal
+	}
+	if phaseVal < policyVal {
 		return phaseVal
 	}
 	return policyVal
+}
+
+// PerPhaseBudget splits a run budget across concurrent phases so combos do not
+// duplicate the full dashboard scale into each phase.
+func PerPhaseBudget(total, phaseCount int) int {
+	if total <= 0 || phaseCount <= 1 {
+		return total
+	}
+	perPhase := total / phaseCount
+	if perPhase < 1 {
+		return 1
+	}
+	return perPhase
 }
 
 func copyPhaseParams(in map[string]string) map[string]string {
@@ -71,7 +84,7 @@ func RequiredVectors(phases []Phase) []string {
 }
 
 // BuildPhaseEvent maps a scheduled phase to a Redis event using policy/run scale.
-func BuildPhaseEvent(ph Phase, runID, target string, workers, streams, batch int, base, expiresAt time.Time, l7Mode, proxyFile string) redisbus.PhaseEvent {
+func BuildPhaseEvent(ph Phase, runID, target string, workers, streams, batch int, base, expiresAt time.Time, l7Mode, proxyFile, wsPath string) redisbus.PhaseEvent {
 	params := copyPhaseParams(ph.Params)
 	if proxyFile != "" {
 		if params == nil {
@@ -81,17 +94,26 @@ func BuildPhaseEvent(ph Phase, runID, target string, workers, streams, batch int
 			params["proxy_file"] = proxyFile
 		}
 	}
-	if ph.Vector == "l7-abuser" && l7Mode != "" {
+	mode := strings.ToLower(strings.TrimSpace(l7Mode))
+	if ph.Vector == "l7-abuser" && mode != "" && !IsStandaloneAttackMode(mode) {
 		if params == nil {
 			params = map[string]string{}
 		}
 		if params["mode"] == "" || params["mode"] == "baseline" {
-			params["mode"] = l7Mode
+			params["mode"] = mode
 		}
 		if params["cms"] == "" {
-			if cms := l7ModeCMSHint(l7Mode); cms != "" {
+			if cms := l7ModeCMSHint(mode); cms != "" {
 				params["cms"] = cms
 			}
+		}
+	}
+	if ph.Vector == "ws-flood" && strings.TrimSpace(wsPath) != "" {
+		if params == nil {
+			params = map[string]string{}
+		}
+		if params["ws_path"] == "" {
+			params["ws_path"] = strings.TrimSpace(wsPath)
 		}
 	}
 	delay := time.Duration(ph.AtSec) * time.Second

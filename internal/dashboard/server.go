@@ -18,8 +18,8 @@ import (
 
 	"github.com/kjsst/sh-mvdos/internal/fsutil"
 	"github.com/kjsst/sh-mvdos/internal/guard"
-	"github.com/kjsst/sh-mvdos/internal/learnattack"
 	"github.com/kjsst/sh-mvdos/internal/labpolicy"
+	"github.com/kjsst/sh-mvdos/internal/learnattack"
 	"github.com/kjsst/sh-mvdos/internal/orchestrator"
 	"github.com/kjsst/sh-mvdos/internal/recon"
 	"github.com/kjsst/sh-mvdos/internal/redisbus"
@@ -66,6 +66,7 @@ type RunScale struct {
 	Streams   int    `json:"streams"`
 	BatchSize int    `json:"batch_size"`
 	ProxyFile string `json:"proxy_file,omitempty"`
+	WSPath    string `json:"ws_path,omitempty"`
 }
 
 type RunState struct {
@@ -96,14 +97,14 @@ var weakDashboardTokens = map[string]bool{
 
 func New(policyPath, phasesPath, combosPath, redisAddr, addr, apiToken string) *Server {
 	s := &Server{
-		PolicyPath: policyPath,
-		PhasesPath: phasesPath,
-		CombosPath: combosPath,
-		RedisAddr:  redisAddr,
-		Addr:       addr,
-		APIToken:   apiToken,
-		bus:        redisbus.New(redisAddr),
-		metrics:    make(map[string]redisbus.MetricsEvent),
+		PolicyPath:      policyPath,
+		PhasesPath:      phasesPath,
+		CombosPath:      combosPath,
+		RedisAddr:       redisAddr,
+		Addr:            addr,
+		APIToken:        apiToken,
+		bus:             redisbus.New(redisAddr),
+		metrics:         make(map[string]redisbus.MetricsEvent),
 		lastPhases:      make([]string, 0, 8),
 		pendingPhases:   make(map[string]struct{}),
 		confirmedPhases: make(map[string]struct{}),
@@ -441,6 +442,13 @@ func (s *Server) handlePolicy(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(string(body), "proxy_file") {
 			existing.ProxyFile = strings.TrimSpace(draft.ProxyFile)
 		}
+		if strings.Contains(string(body), "ws_path") {
+			existing.WSPath = strings.TrimSpace(draft.WSPath)
+		}
+		if err := existing.ValidateRuntimeBounds(s.PolicyPath); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		// lab_mode, ethics_ack, allowed_hosts remain authoritative in the policy file
 		if err := existing.Save(s.PolicyPath); err != nil {
 			http.Error(w, err.Error(), 500)
@@ -507,6 +515,10 @@ func (s *Server) handleAttackStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 403)
 		return
 	}
+	if err := p.ValidateRuntimeBounds(s.PolicyPath); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	switch p.ConductorMode {
 	case "auto":
 		http.Error(w, "conductor_mode=auto; manual start disabled (start with docker compose --profile auto)", 409)
@@ -566,7 +578,8 @@ func (s *Server) handleAttackStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	selected := orchestrator.SelectPhases(phases, combo)
+	attackMode := p.EffectiveAttackMode()
+	selected := orchestrator.SelectAttackPhases(phases, combo, attackMode)
 	if len(selected) == 0 {
 		http.Error(w, "no phases selected for combo", 400)
 		return
@@ -605,20 +618,20 @@ func (s *Server) handleAttackStart(w http.ResponseWriter, r *http.Request) {
 	s.lastPhases = nil
 	s.metrics = make(map[string]redisbus.MetricsEvent)
 	s.runL7Mode = p.L7Mode
-	s.runScale = RunScale{Workers: workers, Streams: streams, BatchSize: batch, ProxyFile: p.ProxyFile}
+	s.runScale = RunScale{Workers: workers, Streams: streams, BatchSize: batch, ProxyFile: p.ProxyFile, WSPath: p.WSPath}
 	s.run = RunState{
-		RunID:           runID,
-		Active:          true,
-		StartedAt:       now,
-		ExpiresAt:       expires,
-		Combo:           startCombo,
-		Mode:            p.ConductorMode,
-		Target:          p.TargetURL,
-		VectorsOK:       false,
+		RunID:     runID,
+		Active:    true,
+		StartedAt: now,
+		ExpiresAt: expires,
+		Combo:     startCombo,
+		Mode:      p.ConductorMode,
+		Target:    p.TargetURL,
+		VectorsOK: false,
 	}
 	s.mu.Unlock()
 	s.persistRunState()
-	s.publishPhases(runID, selected, p.TargetURL, workers, streams, batch, p.ProxyFile, now, expires)
+	s.publishPhases(runID, selected, p.TargetURL, workers, streams, batch, p.ProxyFile, p.WSPath, now, expires)
 
 	if learnattack.IsLearnMode(p.ConductorMode) && learner != nil {
 		s.startLearnLoop(learner, p, combos, phases, expires)
@@ -768,7 +781,7 @@ func (s *Server) startLearnLoop(learner *learnattack.Learner, p *labpolicy.Polic
 				s.mu.RLock()
 				exp := s.run.ExpiresAt
 				s.mu.RUnlock()
-				s.publishPhases(runID, selected, p.TargetURL, result.Scale.Workers, result.Scale.Streams, result.Scale.BatchSize, p.ProxyFile, time.Now(), exp)
+				s.publishPhases(runID, selected, p.TargetURL, result.Scale.Workers, result.Scale.Streams, result.Scale.BatchSize, p.ProxyFile, p.WSPath, time.Now(), exp)
 
 				s.learnMu.Lock()
 				s.learnState = result
@@ -856,7 +869,7 @@ func (s *Server) resumeActiveRunIfNeeded(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	selected := orchestrator.SelectPhases(phases, combo)
+	selected := orchestrator.SelectAttackPhases(phases, combo, l7Mode)
 	if len(selected) == 0 {
 		return
 	}
@@ -867,7 +880,7 @@ func (s *Server) resumeActiveRunIfNeeded(ctx context.Context) {
 			continue
 		}
 		publishAt := run.StartedAt.Add(time.Duration(ph.AtSec) * time.Second)
-		ev := orchestrator.BuildPhaseEvent(ph, run.RunID, run.Target, scale.Workers, scale.Streams, scale.BatchSize, run.StartedAt, run.ExpiresAt, l7Mode, scale.ProxyFile)
+		ev := orchestrator.BuildPhaseEvent(ph, run.RunID, run.Target, scale.Workers, scale.Streams, scale.BatchSize, run.StartedAt, run.ExpiresAt, l7Mode, scale.ProxyFile, scale.WSPath)
 		ev.At = publishAt
 		delay := time.Until(publishAt)
 		if delay < 0 {
@@ -908,10 +921,14 @@ func (s *Server) resumeActiveRunIfNeeded(ctx context.Context) {
 	}
 }
 
-func (s *Server) publishPhases(runID string, selected []orchestrator.Phase, target string, workers, streams, batch int, proxyFile string, base, expires time.Time) {
+func (s *Server) publishPhases(runID string, selected []orchestrator.Phase, target string, workers, streams, batch int, proxyFile, wsPath string, base, expires time.Time) {
 	if runID == "" {
 		return
 	}
+	phaseCount := len(selected)
+	workers = orchestrator.PerPhaseBudget(workers, phaseCount)
+	streams = orchestrator.PerPhaseBudget(streams, phaseCount)
+	batch = orchestrator.PerPhaseBudget(batch, phaseCount)
 	phaseIDs := make([]string, len(selected))
 	for i, ph := range selected {
 		phaseIDs[i] = ph.ID
@@ -923,7 +940,7 @@ func (s *Server) publishPhases(runID string, selected []orchestrator.Phase, targ
 	l7Mode := s.runL7Mode
 	s.mu.RUnlock()
 	for _, ph := range selected {
-		ev := orchestrator.BuildPhaseEvent(ph, runID, target, workers, streams, batch, base, expires, l7Mode, proxyFile)
+		ev := orchestrator.BuildPhaseEvent(ph, runID, target, workers, streams, batch, base, expires, l7Mode, proxyFile, wsPath)
 		delay := time.Until(ev.At)
 		if delay < 0 {
 			delay = 0
@@ -1045,11 +1062,11 @@ func (s *Server) handlePolicyAllowed(w http.ResponseWriter, r *http.Request) {
 	}
 	promoted, promoteNote := s.tryPromoteReconDraft(p)
 	writeJSON(w, map[string]any{
-		"status":        action,
-		"changed":       changed,
-		"allowed_hosts": p.AllowedHosts,
+		"status":         action,
+		"changed":        changed,
+		"allowed_hosts":  p.AllowedHosts,
 		"draft_promoted": promoted,
-		"promote_note":  promoteNote,
+		"promote_note":   promoteNote,
 	})
 }
 
@@ -1267,10 +1284,10 @@ func (s *Server) handleReconPromote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{
-		"status":  "promoted",
-		"note":    note,
-		"policy":  saved,
-		"draft":   draft,
+		"status": "promoted",
+		"note":   note,
+		"policy": saved,
+		"draft":  draft,
 	})
 }
 
