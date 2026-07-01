@@ -62,6 +62,11 @@ func main() {
 	bus := redisbus.New(redisAddr)
 	runID := newRunID()
 	start := time.Now()
+	maxDur := policy.MaxDurationSec
+	if maxDur <= 0 {
+		maxDur = 300
+	}
+	expires := start.Add(time.Duration(maxDur) * time.Second)
 	schedule := orchestrator.ScheduleStart(start, selected)
 
 	slog.Info("conductor auto run starting", "run_id", runID, "combo", policy.Combo, "phases", len(selected))
@@ -80,23 +85,19 @@ func main() {
 			slog.Error("refusing phase publish — target no longer authorized", "phase", ph.ID, "err", err)
 			continue
 		}
-		ev := orchestrator.BuildPhaseEvent(ph, runID, policy.TargetURL, policy.Workers, policy.Streams, policy.BatchSize, start, policy.L7Mode, policy.ProxyFile)
+		ev := orchestrator.BuildPhaseEvent(ph, runID, policy.TargetURL, policy.Workers, policy.Streams, policy.BatchSize, start, expires, policy.L7Mode, policy.ProxyFile)
 		ev.At = targetTime
-		if err := bus.Publish(ctx, redisbus.ChannelPhase, ev); err != nil {
+		if err := bus.PublishPhase(ctx, ev); err != nil {
 			slog.Error("publish", "phase", ph.ID, "err", err)
 		} else {
 			slog.Info("phase published", "run_id", runID, "id", ph.ID, "vector", ph.Vector)
 		}
 	}
 
-	maxDur := policy.MaxDurationSec
-	if maxDur <= 0 {
-		maxDur = 300
-	}
 	select {
 	case <-ctx.Done():
 	case <-time.After(time.Duration(maxDur) * time.Second):
-		_ = bus.Publish(context.Background(), redisbus.ChannelStop, redisbus.StopEvent{
+		_ = bus.PublishStop(context.Background(), redisbus.StopEvent{
 			RunID: runID, Reason: "conductor_max_duration",
 		})
 	}

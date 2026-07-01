@@ -14,6 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"fmt"
+
+	"github.com/kjsst/sh-mvdos/internal/fsutil"
 	"github.com/kjsst/sh-mvdos/internal/guard"
 	"github.com/kjsst/sh-mvdos/internal/learnattack"
 	"github.com/kjsst/sh-mvdos/internal/labpolicy"
@@ -54,6 +57,15 @@ type Server struct {
 	learnState  learnattack.RoundResult
 	learnActive bool
 	learnCancel context.CancelFunc
+
+	runScale RunScale
+}
+
+type RunScale struct {
+	Workers   int    `json:"workers"`
+	Streams   int    `json:"streams"`
+	BatchSize int    `json:"batch_size"`
+	ProxyFile string `json:"proxy_file,omitempty"`
 }
 
 type RunState struct {
@@ -70,10 +82,12 @@ type RunState struct {
 }
 
 type persistedSnapshot struct {
-	Run        RunState                         `json:"run"`
-	RunL7Mode  string                           `json:"run_l7_mode,omitempty"`
-	LastPhases []string                         `json:"last_phases,omitempty"`
-	Metrics    map[string]redisbus.MetricsEvent `json:"metrics,omitempty"`
+	Run         RunState                         `json:"run"`
+	RunL7Mode   string                           `json:"run_l7_mode,omitempty"`
+	RunScale    RunScale                         `json:"run_scale,omitempty"`
+	LearnActive bool                             `json:"learn_active,omitempty"`
+	LastPhases  []string                         `json:"last_phases,omitempty"`
+	Metrics     map[string]redisbus.MetricsEvent `json:"metrics,omitempty"`
 }
 
 var weakDashboardTokens = map[string]bool{
@@ -119,6 +133,7 @@ func (s *Server) loadPersistedRunState() {
 	s.mu.Lock()
 	s.run = snap.Run
 	s.runL7Mode = snap.RunL7Mode
+	s.runScale = snap.RunScale
 	if len(snap.LastPhases) > 0 {
 		s.lastPhases = append([]string(nil), snap.LastPhases...)
 	}
@@ -129,6 +144,9 @@ func (s *Server) loadPersistedRunState() {
 		}
 	}
 	s.mu.Unlock()
+	s.learnMu.Lock()
+	s.learnActive = snap.LearnActive
+	s.learnMu.Unlock()
 }
 
 func (s *Server) persistRunState() {
@@ -136,6 +154,7 @@ func (s *Server) persistRunState() {
 	snap := persistedSnapshot{
 		Run:        s.run,
 		RunL7Mode:  s.runL7Mode,
+		RunScale:   s.runScale,
 		LastPhases: append([]string(nil), s.lastPhases...),
 		Metrics:    make(map[string]redisbus.MetricsEvent, len(s.metrics)),
 	}
@@ -143,10 +162,12 @@ func (s *Server) persistRunState() {
 		snap.Metrics[k] = v
 	}
 	s.mu.RUnlock()
+	s.learnMu.RLock()
+	snap.LearnActive = s.learnActive
+	s.learnMu.RUnlock()
 	path := s.runSnapshotPath()
-	_ = os.MkdirAll(filepath.Dir(path), 0o755)
 	data, _ := json.Marshal(snap)
-	_ = os.WriteFile(path, data, 0o644)
+	_ = fsutil.WriteFile(path, data, 0o644)
 }
 
 func (s *Server) resetPhaseBatch(phaseIDs []string) {
@@ -201,6 +222,9 @@ func (s *Server) statusPayload() map[string]any {
 	s.learnMu.RUnlock()
 
 	redisUp := s.redisOK()
+	checkCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	onlineWorkers, _ := s.bus.ListWorkers(checkCtx)
+	cancel()
 	warning := ""
 	if run.Active && run.PhasesConfirmed == 0 && !run.StartedAt.IsZero() && time.Since(run.StartedAt) > 10*time.Second {
 		warning = "attack started but no phases confirmed on Redis — check workers are up and subscribed"
@@ -219,6 +243,7 @@ func (s *Server) statusPayload() map[string]any {
 		"metrics":     metrics,
 		"last_phases": phases,
 		"learn":       map[string]any{"active": learnOn, "round": learn},
+		"workers":     onlineWorkers,
 		"warning":     warning,
 	}
 }
@@ -270,6 +295,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 	s.phaseCtx, s.phaseCancel = context.WithCancel(ctx)
 	go s.runSubscriber(subCtx)
+	go s.resumeActiveRunIfNeeded(ctx)
 
 	return s.ListenAndServe()
 }
@@ -545,6 +571,18 @@ func (s *Server) handleAttackStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no phases selected for combo", 400)
 		return
 	}
+	required := orchestrator.RequiredVectors(selected)
+	checkCtx, checkCancel := context.WithTimeout(r.Context(), 3*time.Second)
+	missing, err := s.bus.WorkersReady(checkCtx, required)
+	checkCancel()
+	if err != nil {
+		http.Error(w, "worker registry check failed: "+err.Error(), 503)
+		return
+	}
+	if len(missing) > 0 {
+		http.Error(w, fmt.Sprintf("required workers offline: %s — start vector containers first", strings.Join(missing, ", ")), 503)
+		return
+	}
 
 	now := time.Now()
 	maxDur := p.MaxDurationSec
@@ -567,6 +605,7 @@ func (s *Server) handleAttackStart(w http.ResponseWriter, r *http.Request) {
 	s.lastPhases = nil
 	s.metrics = make(map[string]redisbus.MetricsEvent)
 	s.runL7Mode = p.L7Mode
+	s.runScale = RunScale{Workers: workers, Streams: streams, BatchSize: batch, ProxyFile: p.ProxyFile}
 	s.run = RunState{
 		RunID:           runID,
 		Active:          true,
@@ -579,27 +618,13 @@ func (s *Server) handleAttackStart(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 	s.persistRunState()
-	s.publishPhases(runID, selected, p.TargetURL, workers, streams, batch, p.ProxyFile, now)
+	s.publishPhases(runID, selected, p.TargetURL, workers, streams, batch, p.ProxyFile, now, expires)
 
 	if learnattack.IsLearnMode(p.ConductorMode) && learner != nil {
 		s.startLearnLoop(learner, p, combos, phases, expires)
 	}
 
-	// Enforce max_duration_sec server-side for dashboard-started runs
-	go func(exp time.Time, rid string) {
-		timer := time.NewTimer(time.Until(exp))
-		<-timer.C
-		s.mu.Lock()
-		if s.run.Active && s.run.RunID == rid {
-			s.run.Active = false
-			s.run.PhasesConfirmed = 0
-		}
-		s.mu.Unlock()
-		s.persistRunState()
-		_ = s.bus.Publish(context.Background(), redisbus.ChannelStop, redisbus.StopEvent{
-			RunID: rid, Reason: "max_duration",
-		})
-	}(expires, runID)
+	s.armRunDeadline(expires, runID)
 	payload := s.statusPayload()
 	payload["status"] = "started"
 	payload["run_id"] = runID
@@ -617,7 +642,7 @@ func (s *Server) handleAttackStop(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	runID := s.run.RunID
 	s.mu.RUnlock()
-	_ = s.bus.Publish(context.Background(), redisbus.ChannelStop, redisbus.StopEvent{
+	_ = s.bus.PublishStop(context.Background(), redisbus.StopEvent{
 		RunID: runID, Reason: "dashboard",
 	})
 	if s.phaseCancel != nil {
@@ -740,7 +765,10 @@ func (s *Server) startLearnLoop(learner *learnattack.Learner, p *labpolicy.Polic
 				if runID == "" {
 					continue
 				}
-				s.publishPhases(runID, selected, p.TargetURL, result.Scale.Workers, result.Scale.Streams, result.Scale.BatchSize, p.ProxyFile, time.Now())
+				s.mu.RLock()
+				exp := s.run.ExpiresAt
+				s.mu.RUnlock()
+				s.publishPhases(runID, selected, p.TargetURL, result.Scale.Workers, result.Scale.Streams, result.Scale.BatchSize, p.ProxyFile, time.Now(), exp)
 
 				s.learnMu.Lock()
 				s.learnState = result
@@ -772,7 +800,115 @@ func (s *Server) controlPlaneReady(w http.ResponseWriter) bool {
 	return true
 }
 
-func (s *Server) publishPhases(runID string, selected []orchestrator.Phase, target string, workers, streams, batch int, proxyFile string, base time.Time) {
+func (s *Server) armRunDeadline(expires time.Time, runID string) {
+	go func(exp time.Time, rid string) {
+		timer := time.NewTimer(time.Until(exp))
+		defer timer.Stop()
+		<-timer.C
+		s.mu.Lock()
+		if s.run.Active && s.run.RunID == rid {
+			s.run.Active = false
+			s.run.PhasesConfirmed = 0
+		}
+		s.mu.Unlock()
+		s.persistRunState()
+		_ = s.bus.PublishStop(context.Background(), redisbus.StopEvent{
+			RunID: rid, Reason: "max_duration",
+		})
+	}(expires, runID)
+}
+
+func (s *Server) resumeActiveRunIfNeeded(ctx context.Context) {
+	time.Sleep(500 * time.Millisecond)
+	s.mu.RLock()
+	run := s.run
+	scale := s.runScale
+	l7Mode := s.runL7Mode
+	confirmed := make(map[string]struct{}, len(s.confirmedPhases))
+	for id := range s.confirmedPhases {
+		confirmed[id] = struct{}{}
+	}
+	for _, id := range s.lastPhases {
+		confirmed[id] = struct{}{}
+	}
+	s.mu.RUnlock()
+	s.learnMu.RLock()
+	learnOn := s.learnActive
+	s.learnMu.RUnlock()
+
+	if !run.Active || run.RunID == "" {
+		return
+	}
+	if time.Now().After(run.ExpiresAt) {
+		_ = s.bus.PublishStop(context.Background(), redisbus.StopEvent{RunID: run.RunID, Reason: "expired_on_resume"})
+		return
+	}
+
+	phases, err := orchestrator.LoadPhases(s.PhasesPath)
+	if err != nil {
+		return
+	}
+	combos, err := orchestrator.LoadCombos(s.CombosPath)
+	if err != nil {
+		return
+	}
+	combo, err := orchestrator.FindCombo(combos, run.Combo)
+	if err != nil {
+		return
+	}
+	selected := orchestrator.SelectPhases(phases, combo)
+	if len(selected) == 0 {
+		return
+	}
+
+	slog.Info("dashboard resuming active run after restart", "run_id", run.RunID, "combo", run.Combo)
+	for _, ph := range selected {
+		if _, ok := confirmed[ph.ID]; ok {
+			continue
+		}
+		publishAt := run.StartedAt.Add(time.Duration(ph.AtSec) * time.Second)
+		ev := orchestrator.BuildPhaseEvent(ph, run.RunID, run.Target, scale.Workers, scale.Streams, scale.BatchSize, run.StartedAt, run.ExpiresAt, l7Mode, scale.ProxyFile)
+		ev.At = publishAt
+		delay := time.Until(publishAt)
+		if delay < 0 {
+			delay = 0
+		}
+		go func(ev redisbus.PhaseEvent, d time.Duration) {
+			if d > 0 {
+				select {
+				case <-time.After(d):
+				case <-s.phaseCtx.Done():
+					return
+				case <-ctx.Done():
+					return
+				}
+			}
+			pubCtx, cancel := context.WithTimeout(s.phaseCtx, 5*time.Second)
+			if err := s.bus.PublishPhase(pubCtx, ev); err != nil {
+				slog.Error("dashboard resume phase publish failed", "run_id", ev.RunID, "id", ev.PhaseID, "err", err)
+			} else {
+				slog.Info("dashboard resumed phase", "run_id", ev.RunID, "id", ev.PhaseID, "vector", ev.Vector)
+			}
+			cancel()
+		}(ev, delay)
+	}
+
+	s.armRunDeadline(run.ExpiresAt, run.RunID)
+
+	if learnOn {
+		p, err := labpolicy.Load(s.PolicyPath)
+		if err == nil {
+			learner := learnattack.NewLearner(learnattack.Scale{
+				Workers: scale.Workers, Streams: scale.Streams, BatchSize: scale.BatchSize, Combo: run.Combo,
+			}, comboIDs(combos), run.Combo)
+			learner.SetStatePath(filepath.Join("data", ".learn-state.json"))
+			learner.Restore()
+			s.startLearnLoop(learner, p, combos, phases, run.ExpiresAt)
+		}
+	}
+}
+
+func (s *Server) publishPhases(runID string, selected []orchestrator.Phase, target string, workers, streams, batch int, proxyFile string, base, expires time.Time) {
 	if runID == "" {
 		return
 	}
@@ -787,7 +923,7 @@ func (s *Server) publishPhases(runID string, selected []orchestrator.Phase, targ
 	l7Mode := s.runL7Mode
 	s.mu.RUnlock()
 	for _, ph := range selected {
-		ev := orchestrator.BuildPhaseEvent(ph, runID, target, workers, streams, batch, base, l7Mode, proxyFile)
+		ev := orchestrator.BuildPhaseEvent(ph, runID, target, workers, streams, batch, base, expires, l7Mode, proxyFile)
 		delay := time.Until(ev.At)
 		if delay < 0 {
 			delay = 0
@@ -804,7 +940,7 @@ func (s *Server) publishPhases(runID string, selected []orchestrator.Phase, targ
 				return
 			}
 			pubCtx, cancel := context.WithTimeout(s.phaseCtx, 5*time.Second)
-			if err := s.bus.Publish(pubCtx, redisbus.ChannelPhase, ev); err != nil {
+			if err := s.bus.PublishPhase(pubCtx, ev); err != nil {
 				slog.Error("dashboard phase publish failed", "run_id", ev.RunID, "id", ev.PhaseID, "err", err)
 			} else {
 				slog.Info("dashboard phase published", "run_id", ev.RunID, "id", ev.PhaseID, "vector", ev.Vector, "workers", ev.Workers)

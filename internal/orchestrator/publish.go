@@ -53,8 +53,25 @@ func copyPhaseParams(in map[string]string) map[string]string {
 	return out
 }
 
+// RequiredVectors returns unique vector ids referenced by phases.
+func RequiredVectors(phases []Phase) []string {
+	seen := make(map[string]struct{}, len(phases))
+	var out []string
+	for _, ph := range phases {
+		if ph.Vector == "" {
+			continue
+		}
+		if _, ok := seen[ph.Vector]; ok {
+			continue
+		}
+		seen[ph.Vector] = struct{}{}
+		out = append(out, ph.Vector)
+	}
+	return out
+}
+
 // BuildPhaseEvent maps a scheduled phase to a Redis event using policy/run scale.
-func BuildPhaseEvent(ph Phase, runID, target string, workers, streams, batch int, base time.Time, l7Mode, proxyFile string) redisbus.PhaseEvent {
+func BuildPhaseEvent(ph Phase, runID, target string, workers, streams, batch int, base, expiresAt time.Time, l7Mode, proxyFile string) redisbus.PhaseEvent {
 	params := copyPhaseParams(ph.Params)
 	if proxyFile != "" {
 		if params == nil {
@@ -88,5 +105,6 @@ func BuildPhaseEvent(ph Phase, runID, target string, workers, streams, batch int
 		BatchSize: PickScale(ph.Batch, batch),
 		Params:    params,
 		At:        base.Add(delay),
+		ExpiresAt: expiresAt,
 	}
 }

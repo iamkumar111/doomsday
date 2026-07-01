@@ -49,6 +49,7 @@ type PhaseEvent struct {
 	BatchSize int               `json:"batch_size"`
 	Params    map[string]string `json:"params,omitempty"`
 	At        time.Time         `json:"at"`
+	ExpiresAt time.Time         `json:"expires_at,omitempty"`
 }
 
 type MetricsEvent struct {

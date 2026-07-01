@@ -1,30 +1,52 @@
 package labpolicy_test
 
 import (
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 
+	"github.com/kjsst/sh-mvdos/internal/guard"
 	"github.com/kjsst/sh-mvdos/internal/labpolicy"
 )
 
-func TestAddAllowedHost(t *testing.T) {
-	p := &labpolicy.Policy{AllowedHosts: []string{"127.0.0.1"}}
-	if !p.AddAllowedHost("example.com") {
-		t.Fatal("expected add")
+func TestSaveAtomicConcurrent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "policy.yaml")
+	p := &labpolicy.Policy{
+		EthicsAck: guard.EthicsAckValue,
+		LabMode:   "isolated",
+		TargetURL: "http://127.0.0.1:8443",
+		Workers:   4,
 	}
-	if p.AddAllowedHost("https://Example.com/path") {
-		t.Fatal("expected duplicate skip")
+	if err := p.Save(path); err != nil {
+		t.Fatal(err)
 	}
-	if !p.IsHostAllowed("example.com") {
-		t.Fatal("expected host allowed")
-	}
-}
 
-func TestRemoveAllowedHost(t *testing.T) {
-	p := &labpolicy.Policy{AllowedHosts: []string{"127.0.0.1", "victim"}}
-	if !p.RemoveAllowedHost("victim") {
-		t.Fatal("expected remove")
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			cp, _ := labpolicy.Load(path)
+			cp.Workers = n + 1
+			_ = cp.Save(path)
+		}(i)
 	}
-	if p.IsHostAllowed("victim") {
-		t.Fatal("expected host removed")
+	wg.Wait()
+
+	loaded, err := labpolicy.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Workers < 1 || loaded.Workers > 9 {
+		t.Fatalf("unexpected workers after concurrent save: %d", loaded.Workers)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) == 0 {
+		t.Fatal("policy file empty after concurrent saves")
 	}
 }

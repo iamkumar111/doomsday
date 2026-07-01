@@ -6,9 +6,13 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 
+	"github.com/kjsst/sh-mvdos/internal/fsutil"
 	"gopkg.in/yaml.v3"
 )
+
+var policySaveMu sync.Mutex
 
 type Policy struct {
 	LabMode            string   `yaml:"lab_mode" json:"lab_mode"`
@@ -48,14 +52,13 @@ func (p *Policy) Save(path string) error {
 	if path == "" {
 		path = DefaultPath
 	}
+	policySaveMu.Lock()
+	defer policySaveMu.Unlock()
 	raw, err := yaml.Marshal(p)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dirOf(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, raw, 0o644)
+	return fsutil.WriteFile(path, raw, 0o644)
 }
 
 func dirOf(path string) string {
