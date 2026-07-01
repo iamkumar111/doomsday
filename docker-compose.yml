@@ -20,7 +20,7 @@ services:
     volumes:
       - ./data:/data
       - ./configs:/configs:ro
-    ports: ["127.0.0.1:8089:8089"]
+    ports: ["${DASHBOARD_HOST_BIND:-0.0.0.0}:8089:8089"]
     depends_on: [redis]
     networks: [lab]
 

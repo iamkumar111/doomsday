@@ -22,7 +22,7 @@ func main() {
 		env("PHASES_PATH", "configs/phases.yaml"),
 		env("COMBOS_PATH", "configs/combos.yaml"),
 		env("REDIS_ADDR", "127.0.0.1:6379"),
-		env("DASHBOARD_ADDR", ":8089"),
+		env("DASHBOARD_ADDR", "0.0.0.0:8089"),
 		env("DASHBOARD_TOKEN", ""),
 	)
 	if err := srv.Run(ctx); err != nil {

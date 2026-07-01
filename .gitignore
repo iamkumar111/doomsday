@@ -1,4 +1,5 @@
 bin/
+.env
 data/runtime.env
 data/.dashboard-run.json
 data/.dashboard-run-snapshot.json
