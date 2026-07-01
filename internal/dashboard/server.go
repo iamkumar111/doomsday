@@ -412,6 +412,9 @@ func (s *Server) handlePolicy(w http.ResponseWriter, r *http.Request) {
 		if draft.L7Mode != "" {
 			existing.L7Mode = draft.L7Mode
 		}
+		if strings.Contains(string(body), "proxy_file") {
+			existing.ProxyFile = strings.TrimSpace(draft.ProxyFile)
+		}
 		// lab_mode, ethics_ack, allowed_hosts remain authoritative in the policy file
 		if err := existing.Save(s.PolicyPath); err != nil {
 			http.Error(w, err.Error(), 500)
@@ -576,7 +579,7 @@ func (s *Server) handleAttackStart(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 	s.persistRunState()
-	s.publishPhases(runID, selected, p.TargetURL, workers, streams, batch, now)
+	s.publishPhases(runID, selected, p.TargetURL, workers, streams, batch, p.ProxyFile, now)
 
 	if learnattack.IsLearnMode(p.ConductorMode) && learner != nil {
 		s.startLearnLoop(learner, p, combos, phases, expires)
@@ -737,7 +740,7 @@ func (s *Server) startLearnLoop(learner *learnattack.Learner, p *labpolicy.Polic
 				if runID == "" {
 					continue
 				}
-				s.publishPhases(runID, selected, p.TargetURL, result.Scale.Workers, result.Scale.Streams, result.Scale.BatchSize, time.Now())
+				s.publishPhases(runID, selected, p.TargetURL, result.Scale.Workers, result.Scale.Streams, result.Scale.BatchSize, p.ProxyFile, time.Now())
 
 				s.learnMu.Lock()
 				s.learnState = result
@@ -769,7 +772,7 @@ func (s *Server) controlPlaneReady(w http.ResponseWriter) bool {
 	return true
 }
 
-func (s *Server) publishPhases(runID string, selected []orchestrator.Phase, target string, workers, streams, batch int, base time.Time) {
+func (s *Server) publishPhases(runID string, selected []orchestrator.Phase, target string, workers, streams, batch int, proxyFile string, base time.Time) {
 	if runID == "" {
 		return
 	}
@@ -784,7 +787,7 @@ func (s *Server) publishPhases(runID string, selected []orchestrator.Phase, targ
 	l7Mode := s.runL7Mode
 	s.mu.RUnlock()
 	for _, ph := range selected {
-		ev := orchestrator.BuildPhaseEvent(ph, runID, target, workers, streams, batch, base, l7Mode)
+		ev := orchestrator.BuildPhaseEvent(ph, runID, target, workers, streams, batch, base, l7Mode, proxyFile)
 		delay := time.Until(ev.At)
 		if delay < 0 {
 			delay = 0

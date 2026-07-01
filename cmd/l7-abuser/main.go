@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/kjsst/sh-mvdos/internal/guard"
 	"github.com/kjsst/sh-mvdos/internal/redisbus"
@@ -30,13 +31,24 @@ func main() {
 		Run: func(ctx context.Context, ev redisbus.PhaseEvent) (uint64, uint64) {
 			mode := "baseline"
 			cms := ""
+			proxyFile := env("PROXY_FILE", "")
 			if ev.Params != nil {
 				if ev.Params["mode"] != "" {
 					mode = ev.Params["mode"]
 				}
 				cms = ev.Params["cms"]
+				if ev.Params["proxy_file"] != "" {
+					proxyFile = ev.Params["proxy_file"]
+				}
 			}
-			w := worker.L7Abuser{Target: ev.TargetURL, Workers: ev.Workers, BatchSize: ev.BatchSize, Mode: mode, CMS: cms}
+			w := worker.L7Abuser{
+				Target:    ev.TargetURL,
+				Workers:   ev.Workers,
+				BatchSize: ev.BatchSize,
+				Mode:      mode,
+				CMS:       cms,
+				ProxyFile: strings.TrimSpace(proxyFile),
+			}
 			reqs, errs, _ := w.Run(ctx)
 			return reqs, errs
 		},

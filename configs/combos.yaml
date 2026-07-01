@@ -34,3 +34,7 @@ combos:
   - id: connection-exhaust
     label: Slow connection exhaustion
     phases: [slowloris-hold, l7-rudy]
+
+  - id: rudy-stress
+    label: Slayer RUDY parity (slow POST hold)
+    phases: [l7-rudy]

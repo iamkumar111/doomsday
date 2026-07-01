@@ -25,7 +25,7 @@ phases:
 
   - id: l7-rudy
     vector: l7-abuser
-    at_sec: 2
+    at_sec: 0
     params:
       mode: rudy
 

@@ -11,7 +11,8 @@ RUN CGO_ENABLED=0 go build -trimpath -o /out/dashboard ./cmd/dashboard && \
     CGO_ENABLED=0 go build -trimpath -o /out/slowloris ./cmd/slowloris && \
     CGO_ENABLED=0 go build -trimpath -o /out/ws-flood ./cmd/ws-flood && \
     CGO_ENABLED=0 go build -trimpath -o /out/sync-runtime ./cmd/sync-runtime && \
-    CGO_ENABLED=0 go build -trimpath -o /out/vector-bench ./cmd/vector-bench
+    CGO_ENABLED=0 go build -trimpath -o /out/vector-bench ./cmd/vector-bench && \
+    CGO_ENABLED=0 go build -trimpath -o /out/slayer ./cmd/slayer
 
 FROM alpine:3.20
 WORKDIR /app

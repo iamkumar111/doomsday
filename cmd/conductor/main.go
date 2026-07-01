@@ -80,7 +80,7 @@ func main() {
 			slog.Error("refusing phase publish — target no longer authorized", "phase", ph.ID, "err", err)
 			continue
 		}
-		ev := orchestrator.BuildPhaseEvent(ph, runID, policy.TargetURL, policy.Workers, policy.Streams, policy.BatchSize, start, policy.L7Mode)
+		ev := orchestrator.BuildPhaseEvent(ph, runID, policy.TargetURL, policy.Workers, policy.Streams, policy.BatchSize, start, policy.L7Mode, policy.ProxyFile)
 		ev.At = targetTime
 		if err := bus.Publish(ctx, redisbus.ChannelPhase, ev); err != nil {
 			slog.Error("publish", "phase", ph.ID, "err", err)

@@ -310,8 +310,12 @@
             </div>
             <div class="field">
               <label for="workers">Workers</label>
-              <input id="workers" type="number" min="1" max="128" value="4" />
+              <input id="workers" type="number" min="1" max="2048" value="4" />
             </div>
+          </div>
+          <div class="field" style="margin-top:.85rem">
+            <label for="proxy_file">Proxy file (optional)</label>
+            <input id="proxy_file" type="text" placeholder="/data/proxies.txt" />
           </div>
           <div class="field-grid-3" style="margin-top:.85rem">
             <div class="field">
@@ -413,7 +417,7 @@
 <script>
 let formDirty = false, lastBlockedHost = '', allowedHosts = [], lastStatusKey = '', pollTimer = null, forceActivePollUntil = 0;
 const eventLog = [];
-const fields = ['target_url','combo','l7_mode','conductor_mode','workers','streams','watchdog','batch'];
+const fields = ['target_url','combo','l7_mode','conductor_mode','workers','streams','watchdog','batch','proxy_file'];
 
 const qp = new URLSearchParams(location.search);
 if (qp.get('token')) localStorage.setItem('lab_token', qp.get('token'));
@@ -487,6 +491,7 @@ async function loadPolicy() {
   document.getElementById('streams').value = p.streams || 100;
   document.getElementById('watchdog').value = p.watchdog_cpu_percent ?? 0;
   document.getElementById('batch').value = p.batch_size || 50;
+  document.getElementById('proxy_file').value = p.proxy_file || '';
   allowedHosts = p.allowed_hosts || [];
   renderAllowedHosts();
   formDirty = false;
@@ -518,7 +523,8 @@ function draftPolicy() {
     workers: +document.getElementById('workers').value,
     streams: +document.getElementById('streams').value,
     watchdog_cpu_percent: +document.getElementById('watchdog').value,
-    batch_size: +document.getElementById('batch').value
+    batch_size: +document.getElementById('batch').value,
+    proxy_file: document.getElementById('proxy_file').value.trim()
   };
 }
 

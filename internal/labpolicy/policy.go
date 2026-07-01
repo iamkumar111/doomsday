@@ -23,6 +23,7 @@ type Policy struct {
 	Workers            int      `yaml:"workers" json:"workers"`
 	Streams            int      `yaml:"streams" json:"streams"`
 	BatchSize          int      `yaml:"batch_size" json:"batch_size"`
+	ProxyFile          string   `yaml:"proxy_file" json:"proxy_file,omitempty"`
 }
 
 const DefaultPath = "data/lab-policy.yaml"

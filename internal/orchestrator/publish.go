@@ -54,8 +54,16 @@ func copyPhaseParams(in map[string]string) map[string]string {
 }
 
 // BuildPhaseEvent maps a scheduled phase to a Redis event using policy/run scale.
-func BuildPhaseEvent(ph Phase, runID, target string, workers, streams, batch int, base time.Time, l7Mode string) redisbus.PhaseEvent {
+func BuildPhaseEvent(ph Phase, runID, target string, workers, streams, batch int, base time.Time, l7Mode, proxyFile string) redisbus.PhaseEvent {
 	params := copyPhaseParams(ph.Params)
+	if proxyFile != "" {
+		if params == nil {
+			params = map[string]string{}
+		}
+		if params["proxy_file"] == "" {
+			params["proxy_file"] = proxyFile
+		}
+	}
 	if ph.Vector == "l7-abuser" && l7Mode != "" {
 		if params == nil {
 			params = map[string]string{}

