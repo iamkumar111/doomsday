@@ -1,0 +1,89 @@
+services:
+  redis:
+    image: redis:7-alpine
+    profiles: [attacker]
+    ports: ["6379:6379"]
+    networks: [lab]
+
+  victim:
+    image: nginx:alpine
+    profiles: [monitoring]
+    hostname: victim
+    ports: ["8443:80"]
+    networks: [lab]
+
+  dashboard:
+    build: { context: ., dockerfile: Dockerfile }
+    profiles: [dashboard]
+    command: ["/app/dashboard"]
+    env_file: [data/runtime.env]
+    volumes:
+      - ./data:/data
+      - ./configs:/configs:ro
+    ports: ["127.0.0.1:8089:8089"]
+    depends_on: [redis]
+    networks: [lab]
+
+  conductor:
+    build: { context: ., dockerfile: Dockerfile }
+    profiles: [auto]
+    command: ["/app/conductor"]
+    env_file: [data/runtime.env]
+    volumes:
+      - ./data:/data
+      - ./configs:/configs:ro
+    depends_on: [redis]
+    networks: [lab]
+
+  h2-thrasher:
+    build: { context: ., dockerfile: Dockerfile }
+    profiles: [vectors]
+    command: ["/app/h2-thrasher"]
+    env_file: [data/runtime.env]
+    volumes: [./data:/data, ./configs:/configs:ro]
+    depends_on: [redis]
+    networks: [lab]
+
+  l7-abuser:
+    build: { context: ., dockerfile: Dockerfile }
+    profiles: [vectors]
+    command: ["/app/l7-abuser"]
+    env_file: [data/runtime.env]
+    volumes: [./data:/data, ./configs:/configs:ro]
+    depends_on: [redis]
+    networks: [lab]
+
+  quic-burner:
+    build: { context: ., dockerfile: Dockerfile }
+    profiles: [vectors]
+    command: ["/app/quic-burner"]
+    env_file: [data/runtime.env]
+    volumes: [./data:/data, ./configs:/configs:ro]
+    depends_on: [redis]
+    networks: [lab]
+
+  slowloris:
+    build: { context: ., dockerfile: Dockerfile }
+    profiles: [vectors]
+    command: ["/app/slowloris"]
+    env_file: [data/runtime.env]
+    volumes: [./data:/data, ./configs:/configs:ro]
+    depends_on: [redis]
+    networks: [lab]
+
+  ws-flood:
+    build: { context: ., dockerfile: Dockerfile }
+    profiles: [vectors]
+    command: ["/app/ws-flood"]
+    env_file: [data/runtime.env]
+    volumes: [./data:/data, ./configs:/configs:ro]
+    depends_on: [redis]
+    networks: [lab]
+
+networks:
+  lab:
+    driver: bridge
+
+# Multi-container extreme load example:
+# docker compose --profile vectors up --scale l7-abuser=12 --scale h2-thrasher=6 --scale quic-burner=4
+# Then use Dashboard Target Intel to auto-detect and push high worker counts + recommended combo.

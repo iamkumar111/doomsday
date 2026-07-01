@@ -1,0 +1,114 @@
+phases:
+  - id: l7-flood
+    vector: l7-abuser
+    at_sec: 0
+    params:
+      mode: baseline
+
+  - id: l7-get
+    vector: l7-abuser
+    at_sec: 0
+    params:
+      mode: httpget
+
+  - id: l7-post
+    vector: l7-abuser
+    at_sec: 0
+    params:
+      mode: httppost
+
+  - id: l7-apiflood
+    vector: l7-abuser
+    at_sec: 0
+    params:
+      mode: apiflood
+
+  - id: l7-rudy
+    vector: l7-abuser
+    at_sec: 2
+    params:
+      mode: rudy
+
+  - id: l7-wordpress
+    vector: l7-abuser
+    at_sec: 0
+    params:
+      mode: wordpress
+      cms: WordPress
+
+  - id: wp-search-stress
+    vector: l7-abuser
+    at_sec: 1
+    params:
+      mode: wp-search
+      cms: WordPress
+
+  - id: magento-catalog-search
+    vector: l7-abuser
+    at_sec: 0
+    params:
+      mode: catalog-search
+      cms: Magento
+
+  - id: magento-guest-cart
+    vector: l7-abuser
+    at_sec: 1
+    params:
+      mode: magento-cart
+      cms: Magento
+
+  - id: shopify-search-stress
+    vector: l7-abuser
+    at_sec: 0
+    params:
+      mode: shopify-search
+      cms: Shopify
+
+  - id: drupal-search-stress
+    vector: l7-abuser
+    at_sec: 0
+    params:
+      mode: drupal-search
+      cms: Drupal
+
+  - id: joomla-search-stress
+    vector: l7-abuser
+    at_sec: 0
+    params:
+      mode: joomla-search
+      cms: Joomla
+
+  - id: next-image-stress
+    vector: l7-abuser
+    at_sec: 2
+    params:
+      mode: next-image
+      cms: Next.js
+
+  - id: cms-stress-rotate
+    vector: l7-abuser
+    at_sec: 0
+    params:
+      mode: cms-rotate
+
+  - id: h2-rapid
+    vector: h2-rapid-reset
+    at_sec: 0
+
+  - id: quic-stress
+    vector: quic-burner
+    at_sec: 0
+
+  - id: slowloris-hold
+    vector: slowloris
+    at_sec: 1
+
+  - id: graphql-probe
+    vector: l7-abuser
+    at_sec: 5
+    params:
+      mode: graphql
+
+  - id: ws-stress
+    vector: ws-flood
+    at_sec: 3

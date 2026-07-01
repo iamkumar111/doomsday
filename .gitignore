@@ -1,0 +1,8 @@
+bin/
+data/runtime.env
+data/.dashboard-run.json
+data/.dashboard-run-snapshot.json
+data/.recon-draft.json
+data/.learn-state.json
+*.log
+.DS_Store

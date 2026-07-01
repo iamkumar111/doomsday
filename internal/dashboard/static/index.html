@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SH-MVDoS Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #090d12;
+      --surface: #111820;
+      --surface2: #161f2b;
+      --border: #243041;
+      --text: #e8edf4;
+      --muted: #8b9cb3;
+      --accent: #4f8cff;
+      --accent-dim: #2a4a7a;
+      --ok: #3dd68c;
+      --warn: #f5c542;
+      --err: #f87171;
+      --radius: 12px;
+      --shadow: 0 8px 32px rgba(0,0,0,.35);
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: 'IBM Plex Sans', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      background-image:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(79,140,255,.12), transparent),
+        radial-gradient(ellipse 60% 40% at 100% 0%, rgba(61,214,140,.06), transparent);
+    }
+    .app { max-width: 1520px; margin: 0 auto; padding: 1.25rem 1.5rem 2rem; }
+
+    /* Header */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+      margin-bottom: 1.5rem; flex-wrap: wrap;
+    }
+    .brand { display: flex; align-items: center; gap: .75rem; }
+    .logo {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), #7c5cff);
+      display: grid; place-items: center; font-weight: 700; font-size: .7rem; color: #fff;
+    }
+    .brand h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: -.02em; }
+    .brand p { font-size: .78rem; color: var(--muted); margin-top: .1rem; }
+    .top-pills { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .pill {
+      font-size: .72rem; font-weight: 600; padding: .35rem .65rem; border-radius: 999px;
+      border: 1px solid var(--border); background: var(--surface2); color: var(--muted);
+    }
+    .pill.ok { border-color: #1f6b47; color: var(--ok); background: rgba(61,214,140,.08); }
+    .pill.err { border-color: #7f2d2d; color: var(--err); background: rgba(248,113,113,.08); }
+    .pill.live { border-color: #1f6b47; color: var(--ok); background: rgba(61,214,140,.12); animation: glow 2s ease infinite; }
+    @keyframes glow { 0%,100%{ box-shadow: 0 0 0 0 rgba(61,214,140,0); } 50%{ box-shadow: 0 0 12px rgba(61,214,140,.25); } }
+
+    /* Layout */
+    .main { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 1.25rem; align-items: start; }
+    @media (max-width: 1100px) { .main { grid-template-columns: 1fr; } }
+
+    /* Panels */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .panel + .panel { margin-top: 1rem; }
+    .panel-head {
+      padding: .85rem 1.1rem;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+    }
+    .panel-head h2 { font-size: .82rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+    .panel-body { padding: 1.1rem; }
+
+    /* Forms */
+    label { display: block; font-size: .75rem; font-weight: 500; color: var(--muted); margin-bottom: .35rem; }
+    input, select {
+      width: 100%; padding: .55rem .75rem; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+      font-family: inherit; font-size: .88rem;
+      transition: border-color .15s;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+    .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .85rem; }
+    .field-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; }
+    .field { margin-bottom: .85rem; }
+    .field:last-child { margin-bottom: 0; }
+
+    /* Buttons */
+    button {
+      font-family: inherit; font-size: .82rem; font-weight: 600;
+      padding: .55rem 1rem; border-radius: 8px; border: none; cursor: pointer;
+      transition: transform .1s, opacity .15s;
+    }
+    button:active { transform: scale(.98); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { filter: brightness(1.08); }
+    .btn-danger { background: #b91c1c; color: #fff; }
+    .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-sm { padding: .4rem .7rem; font-size: .75rem; }
+    .toolbar { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+    .toolbar .btn-primary, .toolbar .btn-danger { flex: 1; min-width: 100px; }
+
+    /* Allowlist */
+    .chips { display: flex; flex-wrap: wrap; gap: .4rem; min-height: 1.5rem; margin-bottom: .6rem; }
+    .chip {
+      display: inline-flex; align-items: center; gap: .3rem;
+      padding: .2rem .55rem; border-radius: 999px; font-size: .72rem;
+      background: rgba(79,140,255,.12); border: 1px solid var(--accent-dim); color: #a8c7ff;
+    }
+    .chip button { background: none; border: none; color: var(--muted); padding: 0; font-size: .9rem; cursor: pointer; }
+    .chip button:hover { color: var(--err); }
+    .inline-row { display: flex; gap: .5rem; }
+    .inline-row input { flex: 1; }
+
+    /* Alerts */
+    .alert { font-size: .78rem; padding: .5rem .65rem; border-radius: 8px; margin-top: .65rem; min-height: 1.2rem; }
+    .alert.warn { background: rgba(245,197,66,.1); color: var(--warn); border: 1px solid rgba(245,197,66,.2); }
+    .alert.ok { background: rgba(61,214,140,.1); color: var(--ok); border: 1px solid rgba(61,214,140,.2); }
+    .alert.err { background: rgba(248,113,113,.1); color: var(--err); border: 1px solid rgba(248,113,113,.2); }
+
+    /* Target Intel — full width */
+    .intel-panel { margin-bottom: 1.25rem; }
+    details.recon { margin-bottom: 0; }
+    details.recon summary {
+      cursor: pointer; list-style: none; font-size: .82rem; font-weight: 600;
+      color: var(--muted); text-transform: uppercase; letter-spacing: .05em;
+      padding: .85rem 1.1rem; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+    }
+    details.recon summary::after { content: '▾'; font-size: .7rem; opacity: .6; }
+    details.recon:not([open]) summary::after { content: '▸'; }
+    details.recon summary::-webkit-details-marker { display: none; }
+    details.recon[open] summary { color: var(--accent); border-bottom-color: var(--border); }
+    .recon-actions {
+      display: flex; gap: .5rem; flex-wrap: wrap; align-items: center;
+      margin-bottom: 1rem;
+    }
+    .recon-actions input { flex: 1; min-width: 280px; }
+    .intel-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: .75rem;
+    }
+    .intel-card {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+      padding: .75rem .85rem; min-height: 5.5rem;
+    }
+    .intel-card.wide { grid-column: 1 / -1; }
+    .intel-card h3 {
+      font-size: .65rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--muted); margin-bottom: .45rem;
+    }
+    .intel-val { font-size: .86rem; line-height: 1.45; word-break: break-word; }
+    .intel-val.mono { font-family: 'IBM Plex Mono', monospace; font-size: .78rem; }
+    .intel-tags { display: flex; flex-wrap: wrap; gap: .35rem; }
+    .intel-tag {
+      font-size: .7rem; padding: .18rem .5rem; border-radius: 6px;
+      background: rgba(79,140,255,.1); border: 1px solid var(--accent-dim); color: #a8c7ff;
+    }
+    .intel-tag.warn { background: rgba(245,197,66,.1); border-color: rgba(245,197,66,.3); color: var(--warn); }
+    .intel-tag.ok { background: rgba(61,214,140,.1); border-color: rgba(61,214,140,.3); color: var(--ok); }
+    .intel-tag.err { background: rgba(248,113,113,.1); border-color: rgba(248,113,113,.3); color: var(--err); }
+    .intel-kv { font-size: .76rem; color: var(--muted); margin-top: .25rem; font-family: 'IBM Plex Mono', monospace; }
+    .intel-notes {
+      font-size: .78rem; color: var(--muted); line-height: 1.5;
+      background: rgba(79,140,255,.04); border: 1px solid var(--accent-dim);
+      border-radius: 8px; padding: .65rem .75rem; margin-top: .75rem;
+    }
+    .intel-empty { color: var(--muted); font-size: .78rem; font-style: italic; padding: .5rem 0; }
+
+    /* Monitor (right) */
+    .monitor { position: sticky; top: 1.25rem; }
+    .status-banner {
+      display: flex; align-items: flex-start; gap: .85rem;
+      padding: 1rem; border-radius: 10px; margin-bottom: 1rem;
+      background: var(--bg); border: 1px solid var(--border);
+    }
+    .status-banner.active { border-color: rgba(61,214,140,.4); background: linear-gradient(135deg, rgba(61,214,140,.08), var(--bg)); }
+    .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); margin-top: .25rem; flex-shrink: 0; }
+    .status-banner.active .dot { background: var(--ok); box-shadow: 0 0 0 0 rgba(61,214,140,.5); animation: pulse 1.5s infinite; }
+    @keyframes pulse { 70% { box-shadow: 0 0 0 8px rgba(61,214,140,0); } }
+    .status-title { font-size: 1rem; font-weight: 700; }
+    .status-url { font-size: .75rem; color: var(--muted); margin-top: .2rem; word-break: break-all; font-family: 'IBM Plex Mono', monospace; }
+    .metrics-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin-bottom: 1rem; }
+    .metric {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: .55rem .6rem; text-align: center;
+    }
+    .metric .k { font-size: .62rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    .metric .v { font-size: .9rem; font-weight: 600; margin-top: .2rem; font-variant-numeric: tabular-nums; }
+    .metric .v.ok { color: var(--ok); }
+    .metric .v.err { color: var(--err); }
+    .metric .v.warn { color: var(--warn); }
+
+    .sub-block { margin-bottom: 1rem; }
+    .sub-block:last-child { margin-bottom: 0; }
+    .sub-label { font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: .45rem; }
+    .metrics-table { width: 100%; border-collapse: collapse; font-size: .75rem; }
+    .metrics-table th { text-align: left; color: var(--muted); font-weight: 500; padding: .4rem .3rem; border-bottom: 1px solid var(--border); }
+    .metrics-table td { padding: .45rem .3rem; border-bottom: 1px solid rgba(36,48,65,.5); font-variant-numeric: tabular-nums; }
+    .metrics-table td:first-child { font-weight: 500; }
+    .phase-tags { display: flex; flex-wrap: wrap; gap: .35rem; }
+    .tag { font-size: .7rem; padding: .2rem .5rem; border-radius: 6px; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); }
+    .empty { color: var(--muted); font-size: .78rem; font-style: italic; }
+    .log {
+      font-family: 'IBM Plex Mono', monospace; font-size: .68rem; line-height: 1.55;
+      max-height: 160px; overflow-y: auto; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: .5rem;
+    }
+    .log .ev { padding: .12rem 0; color: var(--muted); }
+    .log .ev.ok { color: var(--ok); }
+    .log .ev.warn { color: var(--warn); }
+    .log .ev.err { color: var(--err); }
+    .log .ev.info { color: #93c5fd; }
+    .learn-box {
+      background: rgba(79,140,255,.06); border: 1px solid var(--accent-dim);
+      border-radius: 8px; padding: .65rem; margin-bottom: 1rem; display: none;
+    }
+    .learn-box.show { display: block; }
+    .learn-line { font-size: .74rem; color: var(--muted); margin-top: .35rem; }
+    .learn-line strong { color: var(--text); }
+    .updated { font-size: .68rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">MV</div>
+      <div>
+        <h1>SH-MVDoS Lab</h1>
+        <p>Allowlisted targets only</p>
+      </div>
+    </div>
+    <div class="top-pills">
+      <span class="pill" id="pill_redis">Redis —</span>
+      <span class="pill" id="pill_attack">Attack idle</span>
+      <span class="pill" id="pill_mode">—</span>
+    </div>
+  </header>
+
+  <section class="panel intel-panel">
+    <details class="recon" open>
+      <summary>Target Intel (optional)</summary>
+      <div class="panel-body">
+        <div class="recon-actions">
+          <input id="recon_url" type="url" placeholder="http://127.0.0.1:8443" value="http://127.0.0.1:8443" />
+          <button class="btn-ghost btn-sm" onclick="analyzeTarget()">Analyze</button>
+          <select id="intensity" class="btn-sm" style="width:auto;padding:.4rem .6rem;">
+            <option value="medium">Medium</option>
+            <option value="high" selected>High</option>
+            <option value="extreme">Extreme</option>
+          </select>
+          <button class="btn-primary btn-sm" onclick="applyRecon()">Apply to policy</button>
+          <button class="btn-ghost btn-sm" onclick="promoteReconDraft()">Promote saved draft</button>
+        </div>
+        <div id="recon_result">
+          <div class="intel-empty">Run Analyze to fingerprint CDN, network, tech stack, and attack recommendations.</div>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <div class="main">
+    <!-- LEFT: Controls -->
+    <div class="controls">
+      <div class="panel">
+        <div class="panel-head"><h2>Attack Policy</h2></div>
+        <div class="panel-body">
+          <div class="field-grid">
+            <div class="field">
+              <label for="target_url">Target URL</label>
+              <input id="target_url" type="url" placeholder="http://127.0.0.1:8443" />
+            </div>
+            <div class="field">
+              <label for="combo">Combo</label>
+              <select id="combo"></select>
+            </div>
+            <div class="field">
+              <label for="l7_mode">L7 mode</label>
+              <select id="l7_mode">
+                <option value="">(from combo phases)</option>
+                <option value="baseline">baseline</option>
+                <option value="httpget">httpget</option>
+                <option value="httppost">httppost</option>
+                <option value="apiflood">apiflood</option>
+                <option value="catalog-search">catalog-search (Magento)</option>
+                <option value="wordpress">wordpress</option>
+                <option value="shopify-search">shopify-search</option>
+                <option value="cms-rotate">cms-rotate</option>
+                <option value="graphql">graphql</option>
+                <option value="rudy">rudy</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="conductor_mode">Mode</label>
+              <select id="conductor_mode">
+                <option value="manual">Manual</option>
+                <option value="hybrid" selected>Hybrid</option>
+                <option value="learn-and-attack">Learn and Attack</option>
+                <option value="auto">Auto</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="workers">Workers</label>
+              <input id="workers" type="number" min="1" max="128" value="4" />
+            </div>
+          </div>
+          <div class="field-grid-3" style="margin-top:.85rem">
+            <div class="field">
+              <label for="streams">Streams</label>
+              <input id="streams" type="number" min="1" max="10000" value="100" />
+            </div>
+            <div class="field">
+              <label for="batch">Batch</label>
+              <input id="batch" type="number" min="1" max="1000" value="50" />
+            </div>
+            <div class="field">
+              <label for="watchdog">Watchdog %</label>
+              <input id="watchdog" type="number" min="0" max="100" value="0" />
+            </div>
+          </div>
+
+          <div class="field" style="margin-top:1rem">
+            <label>Allowed hosts</label>
+            <div class="chips" id="allowed_hosts"></div>
+            <div class="inline-row">
+              <input id="allow_host_input" type="text" placeholder="127.0.0.1" />
+              <button class="btn-ghost btn-sm" onclick="addAllowedHost()">Add</button>
+            </div>
+          </div>
+
+          <div class="alert warn" id="unsaved" style="display:none"></div>
+          <div class="alert" id="validate_msg"></div>
+
+          <div class="toolbar">
+            <button class="btn-ghost" onclick="savePolicy()">Save</button>
+            <button class="btn-ghost" onclick="validateTarget()">Validate</button>
+            <button class="btn-primary" onclick="startAttack()">Start</button>
+            <button class="btn-danger" onclick="stopAttack()">Stop</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Monitor -->
+    <aside class="monitor">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Live Monitor</h2>
+          <span class="updated" id="last_updated">—</span>
+        </div>
+        <div class="panel-body">
+          <div class="status-banner idle" id="status_hero">
+            <div class="dot"></div>
+            <div>
+              <div class="status-title" id="status_label">Idle</div>
+              <div class="status-url" id="status_target">No active run</div>
+            </div>
+          </div>
+
+          <div class="metrics-row">
+            <div class="metric"><div class="k">Run ID</div><div class="v" id="stat_run_id" style="font-size:.72rem">—</div></div>
+            <div class="metric"><div class="k">Combo</div><div class="v" id="stat_combo">—</div></div>
+            <div class="metric"><div class="k">Phases</div><div class="v" id="stat_phases">—</div></div>
+          </div>
+          <div class="metrics-row">
+            <div class="metric"><div class="k">Elapsed</div><div class="v" id="stat_elapsed">—</div></div>
+            <div class="metric"><div class="k">Left</div><div class="v" id="stat_remaining">—</div></div>
+            <div class="metric"><div class="k">Vectors</div><div class="v" id="stat_vectors">—</div></div>
+          </div>
+          <div id="status_warning" class="alert err" style="display:none;margin-bottom:.75rem"></div>
+
+          <div class="learn-box" id="learn_card">
+            <div class="sub-label">Learn and Attack</div>
+            <div class="metrics-row">
+              <div class="metric"><div class="k">Round</div><div class="v" id="learn_round">—</div></div>
+              <div class="metric"><div class="k">Probe</div><div class="v" id="learn_probe">—</div></div>
+              <div class="metric"><div class="k">Degrade</div><div class="v" id="learn_degrade">—</div></div>
+            </div>
+            <div class="learn-line" id="learn_baseline"></div>
+            <div class="learn-line" id="learn_scale"></div>
+            <div class="learn-line" id="learn_decision" style="color:#93c5fd"></div>
+          </div>
+
+          <div class="sub-block">
+            <div class="sub-label">Vector metrics</div>
+            <div id="metrics_wrap"><span class="empty">Waiting for worker reports…</span></div>
+          </div>
+
+          <div class="sub-block">
+            <div class="sub-label">Phases</div>
+            <div class="phase-tags" id="phase_list"><span class="empty">None</span></div>
+          </div>
+
+          <div class="sub-block">
+            <div class="sub-label">Activity</div>
+            <div class="log" id="event_log"></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+let formDirty = false, lastBlockedHost = '', allowedHosts = [], lastStatusKey = '', pollTimer = null, forceActivePollUntil = 0;
+const eventLog = [];
+const fields = ['target_url','combo','l7_mode','conductor_mode','workers','streams','watchdog','batch'];
+
+const qp = new URLSearchParams(location.search);
+if (qp.get('token')) localStorage.setItem('lab_token', qp.get('token'));
+
+function apiHeaders(extra = {}) {
+  const h = { ...extra };
+  const t = localStorage.getItem('lab_token');
+  if (t) h['X-Lab-Token'] = t;
+  return h;
+}
+
+async function ensureAuth() {
+  const cfg = await (await fetch('/api/auth/config')).json().catch(() => ({ auth_required: false }));
+  if (!cfg.auth_required) return true;
+  let t = localStorage.getItem('lab_token');
+  if (!t) {
+    t = prompt('Enter lab API token (see data/runtime.env DASHBOARD_TOKEN):');
+    if (!t) return false;
+    localStorage.setItem('lab_token', t);
+  }
+  const probe = await fetch('/api/status', { headers: apiHeaders() });
+  if (probe.status === 401) {
+    localStorage.removeItem('lab_token');
+    return ensureAuth();
+  }
+  return probe.ok;
+}
+
+async function apiFetch(url, opts = {}) {
+  opts.headers = apiHeaders(opts.headers || {});
+  const r = await fetch(url, opts);
+  if (r.status === 401) {
+    localStorage.removeItem('lab_token');
+    if (await ensureAuth()) return apiFetch(url, opts);
+    throw new Error('unauthorized');
+  }
+  return r;
+}
+
+function markDirty() {
+  formDirty = true;
+  const el = document.getElementById('unsaved');
+  el.style.display = 'block';
+  el.textContent = 'Unsaved changes — save before starting.';
+}
+fields.forEach(id => document.getElementById(id).addEventListener('input', markDirty));
+
+function logEvent(msg, level = 'info') {
+  eventLog.unshift({ ts: new Date().toLocaleTimeString(), msg, level });
+  if (eventLog.length > 60) eventLog.length = 60;
+  const el = document.getElementById('event_log');
+  el.innerHTML = eventLog.map(e => `<div class="ev ${e.level}">[${e.ts}] ${e.msg}</div>`).join('') ||
+    '<div class="ev">Waiting…</div>';
+}
+
+function fmtDuration(sec) {
+  if (sec == null || sec < 0 || !isFinite(sec)) return '—';
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+function validTime(iso) { const d = new Date(iso); return d.getFullYear() > 2000 ? d : null; }
+function fmtNum(n) { return n == null ? '—' : Number(n).toLocaleString(undefined, { maximumFractionDigits: 1 }); }
+
+async function loadPolicy() {
+  const p = await (await apiFetch('/api/policy')).json();
+  document.getElementById('target_url').value = p.target_url || 'http://127.0.0.1:8443';
+  document.getElementById('recon_url').value = p.target_url || 'http://127.0.0.1:8443';
+  document.getElementById('conductor_mode').value = p.conductor_mode || 'hybrid';
+  document.getElementById('l7_mode').value = p.l7_mode || '';
+  document.getElementById('workers').value = p.workers || 4;
+  document.getElementById('streams').value = p.streams || 100;
+  document.getElementById('watchdog').value = p.watchdog_cpu_percent ?? 0;
+  document.getElementById('batch').value = p.batch_size || 50;
+  allowedHosts = p.allowed_hosts || [];
+  renderAllowedHosts();
+  formDirty = false;
+  document.getElementById('unsaved').style.display = 'none';
+  const vm = document.getElementById('validate_msg');
+  vm.textContent = ''; vm.className = 'alert';
+
+  try {
+    const cj = await (await apiFetch('/api/combos')).json();
+    const sel = document.getElementById('combo');
+    sel.innerHTML = '';
+    const current = p.combo || 'baseline';
+    (cj.combos || []).forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id || c.ID;
+      opt.textContent = c.label || c.Label || c.id;
+      if (opt.value === current) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  } catch(e) {}
+}
+
+function draftPolicy() {
+  return {
+    target_url: document.getElementById('target_url').value,
+    conductor_mode: document.getElementById('conductor_mode').value,
+    l7_mode: document.getElementById('l7_mode').value,
+    combo: document.getElementById('combo').value,
+    workers: +document.getElementById('workers').value,
+    streams: +document.getElementById('streams').value,
+    watchdog_cpu_percent: +document.getElementById('watchdog').value,
+    batch_size: +document.getElementById('batch').value
+  };
+}
+
+async function savePolicy() {
+  await apiFetch('/api/policy', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(draftPolicy()) });
+  formDirty = false;
+  document.getElementById('unsaved').style.display = 'none';
+  logEvent('Policy saved', 'ok');
+}
+
+function hostFromURL(raw) {
+  try { return new URL(raw.includes('://') ? raw : 'http://'+raw).hostname.toLowerCase(); }
+  catch { return raw.trim().toLowerCase(); }
+}
+
+function renderAllowedHosts() {
+  const el = document.getElementById('allowed_hosts');
+  if (!allowedHosts.length) { el.innerHTML = '<span class="empty">No hosts</span>'; return; }
+  el.innerHTML = allowedHosts.map(h =>
+    `<span class="chip"><span>${h}</span><button onclick="removeAllowedHost('${h.replace(/'/g,"\\'")}')">×</button></span>`
+  ).join('');
+}
+
+async function addAllowedHost(host) {
+  const value = (host || document.getElementById('allow_host_input').value || document.getElementById('target_url').value).trim();
+  if (!value) return alert('Enter a host');
+  const r = await apiFetch('/api/policy/allowed', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ url: value.includes('://') ? value : undefined, host: value.includes('://') ? undefined : value }) });
+  if (!r.ok) return alert(await r.text());
+  const j = await r.json();
+  allowedHosts = j.allowed_hosts || allowedHosts;
+  renderAllowedHosts();
+  document.getElementById('allow_host_input').value = '';
+  const vm = document.getElementById('validate_msg');
+  vm.className = 'alert ok';
+  let msg = 'Added: ' + (j.changed || []).join(', ');
+  if (j.draft_promoted) {
+    msg += ' — recon draft promoted to policy.';
+    await loadPolicy();
+    logEvent(j.promote_note || 'Recon draft promoted', 'ok');
+  } else {
+    logEvent('Allowlist updated', 'ok');
+  }
+  vm.textContent = msg;
+}
+
+async function removeAllowedHost(host) {
+  const r = await apiFetch('/api/policy/allowed', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ host }) });
+  if (!r.ok) return alert(await r.text());
+  allowedHosts = (await r.json()).allowed_hosts || [];
+  renderAllowedHosts();
+}
+
+async function validateTarget() {
+  const j = await (await apiFetch('/api/validate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(draftPolicy()) })).json();
+  const vm = document.getElementById('validate_msg');
+  if (j.ok) {
+    vm.className = 'alert ok'; vm.textContent = 'Allowed: ' + j.host;
+    logEvent('Validated ' + j.host, 'ok'); return;
+  }
+  lastBlockedHost = j.host || hostFromURL(document.getElementById('target_url').value);
+  vm.className = 'alert err';
+  vm.innerHTML = `Blocked: ${j.error || j.host} <button class="btn-ghost btn-sm" onclick="addAllowedHost('${lastBlockedHost.replace(/'/g,"\\'")}')">Add ${lastBlockedHost}</button>`;
+}
+
+async function startAttack() {
+  if (formDirty) return alert('Save policy first.');
+  const r = await apiFetch('/api/attack/start', { method:'POST' });
+  if (!r.ok) { logEvent('Start failed: ' + await r.text(), 'err'); return alert(await r.text()); }
+  const j = await r.json();
+  forceActivePollUntil = Date.now() + 60000;
+  logEvent('Attack started' + (j.run_id ? ' · ' + j.run_id : ''), 'ok');
+  if (j.run) renderLivePanel(j);
+  schedulePoll(true);
+  refreshStatus();
+}
+
+async function stopAttack() {
+  const r = await apiFetch('/api/attack/stop', { method:'POST' });
+  forceActivePollUntil = 0;
+  let j = {};
+  try { j = await r.json(); } catch (_) {}
+  logEvent('Stopped', 'warn');
+  if (j.run !== undefined) renderLivePanel(j);
+  schedulePoll(false);
+  refreshStatus();
+}
+
+function renderMetrics(metrics) {
+  const wrap = document.getElementById('metrics_wrap');
+  const keys = Object.keys(metrics || {});
+  if (!keys.length) { wrap.innerHTML = '<span class="empty">Waiting for worker reports…</span>'; return; }
+  wrap.innerHTML = `<table class="metrics-table"><thead><tr><th>Vector</th><th>RPS</th><th>Req</th><th>Err</th></tr></thead><tbody>${
+    keys.sort().map(v => { const m = metrics[v];
+      return `<tr><td>${v}</td><td>${fmtNum(m.rps)}</td><td>${fmtNum(m.requests)}</td><td>${fmtNum(m.errors)}</td></tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+function renderPhases(phases) {
+  const el = document.getElementById('phase_list');
+  if (!phases?.length) { el.innerHTML = '<span class="empty">None</span>'; return; }
+  el.innerHTML = phases.map(p => `<span class="tag">${p}</span>`).join('');
+}
+
+function renderLearn(learn) {
+  const card = document.getElementById('learn_card');
+  if (!learn?.active) { card.classList.remove('show'); return; }
+  card.classList.add('show');
+  const r = learn.round || {};
+  document.getElementById('learn_round').textContent = r.round ?? '—';
+  document.getElementById('learn_probe').textContent = r.probe ? Math.round(r.probe.latency_ms||0)+'ms' : '—';
+  document.getElementById('learn_degrade').textContent = r.degradation != null ? Math.round(r.degradation) : '—';
+  document.getElementById('learn_baseline').innerHTML = r.baseline?.latency_ms
+    ? `<strong>Baseline</strong> ${Math.round(r.baseline.latency_ms)}ms · best ${Math.round(r.best_degradation||0)} · ŷ ${Math.round(r.model_predict||0)}`
+    : '';
+  const sc = r.scale || {};
+  document.getElementById('learn_scale').innerHTML = `<strong>Scale</strong> ${sc.workers}w · ${sc.streams}s · ${sc.batch_size}b · <strong>${sc.combo}</strong>`;
+  document.getElementById('learn_decision').textContent = r.decision || '';
+}
+
+function renderLivePanel(j) {
+  const run = j.run || {}, active = !!run.active;
+  const hero = document.getElementById('status_hero');
+  hero.className = 'status-banner ' + (active ? 'active' : 'idle');
+  document.getElementById('status_label').textContent = active ? 'Running' : 'Idle';
+  document.getElementById('status_target').textContent = active && run.target ? run.target : (document.getElementById('target_url').value || '—');
+
+  const pillRedis = document.getElementById('pill_redis');
+  pillRedis.textContent = 'Redis ' + (j.redis ? 'up' : 'down');
+  pillRedis.className = 'pill ' + (j.redis ? 'ok' : 'err');
+
+  const pillAtk = document.getElementById('pill_attack');
+  pillAtk.textContent = active ? 'Attack live' : 'Attack idle';
+  pillAtk.className = 'pill ' + (active ? 'live' : '');
+
+  document.getElementById('pill_mode').textContent = run.mode || document.getElementById('conductor_mode').value;
+
+  document.getElementById('stat_run_id').textContent = run.run_id || '—';
+  document.getElementById('stat_combo').textContent = run.combo || '—';
+  const planned = run.phases_planned ?? 0, confirmed = run.phases_confirmed ?? 0;
+  document.getElementById('stat_phases').textContent = active
+    ? `${confirmed}/${planned} confirmed`
+    : '—';
+  document.getElementById('stat_phases').className = 'v ' + (active && confirmed === 0 && planned > 0 ? 'warn' : active ? 'ok' : '');
+
+  const warnEl = document.getElementById('status_warning');
+  if (j.warning) {
+    warnEl.style.display = 'block';
+    warnEl.textContent = j.warning;
+  } else {
+    warnEl.style.display = 'none';
+  }
+
+  const vec = document.getElementById('stat_vectors');
+  if (active && run.vectors_ok) { vec.textContent = 'OK'; vec.className = 'v ok'; }
+  else if (active) { vec.textContent = 'Wait'; vec.className = 'v warn'; }
+  else { vec.textContent = '—'; vec.className = 'v'; }
+
+  const started = validTime(run.started_at), expires = validTime(run.expires_at);
+  let elapsed = null, remaining = null;
+  if (active && started) {
+    elapsed = (Date.now() - started.getTime()) / 1000;
+    if (expires) remaining = (expires.getTime() - Date.now()) / 1000;
+  }
+  document.getElementById('stat_elapsed').textContent = active ? fmtDuration(elapsed) : '—';
+  const rem = document.getElementById('stat_remaining');
+  rem.textContent = active && remaining != null ? fmtDuration(remaining) : '—';
+  rem.className = 'v ' + (remaining != null && remaining < 30 ? 'warn' : active ? 'ok' : '');
+
+  renderMetrics(j.metrics);
+  renderPhases(j.last_phases);
+  renderLearn(j.learn);
+  document.getElementById('last_updated').textContent = new Date().toLocaleTimeString();
+}
+
+async function refreshStatus() {
+  try {
+    const j = await (await apiFetch('/api/status')).json();
+    renderLivePanel(j);
+    const shouldFastPoll = !!j.run?.active || Date.now() < forceActivePollUntil;
+    schedulePoll(shouldFastPoll);
+  } catch(e) { logEvent('Poll failed', 'err'); }
+}
+
+function schedulePoll(active) {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(refreshStatus, active ? 1000 : 3000);
+}
+
+function tagsHtml(items, cls = '') {
+  if (!items?.length) return '<span class="intel-empty">—</span>';
+  return '<div class="intel-tags">' + items.map(t =>
+    `<span class="intel-tag ${cls}">${t}</span>`).join('') + '</div>';
+}
+
+function renderIntelProfile(p) {
+  const el = document.getElementById('recon_result');
+  const cdn = (p.cdn_providers || []).join(', ') || '—';
+  const waf = p.waf || (p.has_cloudflare ? 'Cloudflare' : '—');
+  const resolved = p.resolved_ips || [];
+  const cdnIPs = p.cdn_ips || [];
+  const origins = p.origin_candidates || [];
+  const cert = p.cert || {};
+  const secPresent = Object.keys(p.security_headers || {});
+  const secMissing = p.missing_sec_headers || [];
+  const notable = p.notable_headers || {};
+  const notableLines = Object.entries(notable).map(([k,v]) => `${k}: ${v}`);
+
+  el.innerHTML = `
+    <div class="intel-grid">
+      <div class="intel-card">
+        <h3>Target</h3>
+        <div class="intel-val mono">${p.final_url || p.url || '—'}</div>
+        <div class="intel-kv">Host: ${p.host || '—'} · HTTP ${p.status_code || '—'}</div>
+      </div>
+      <div class="intel-card">
+        <h3>CDN / WAF</h3>
+        <div class="intel-val">${waf}</div>
+        <div class="intel-kv">${cdn}</div>
+      </div>
+      <div class="intel-card">
+        <h3>Server</h3>
+        <div class="intel-val">${p.server || '—'}</div>
+        ${p.cms ? `<div class="intel-kv">CMS: ${p.cms}</div>` : ''}
+      </div>
+      <div class="intel-card">
+        <h3>DNS / IPs</h3>
+        ${tagsHtml(resolved, 'ok')}
+        ${cdnIPs.length ? `<div class="intel-kv" style="margin-top:.4rem">CDN: ${cdnIPs.join(', ')}</div>` : ''}
+      </div>
+      <div class="intel-card">
+        <h3>Origin candidates</h3>
+        ${origins.length ? tagsHtml(origins, 'warn') : '<span class="intel-empty">None detected</span>'}
+      </div>
+      <div class="intel-card">
+        <h3>Tech stack</h3>
+        ${tagsHtml([...(p.tech_stack||[]), ...(p.frameworks||[])])}
+      </div>
+      <div class="intel-card">
+        <h3>Analytics</h3>
+        ${(p.analytics||[]).length ? tagsHtml(p.analytics) : '<span class="intel-empty">—</span>'}
+      </div>
+      <div class="intel-card">
+        <h3>TLS certificate</h3>
+        <div class="intel-val">${cert.issuer || '—'}</div>
+        ${cert.common_name ? `<div class="intel-kv">CN: ${cert.common_name}</div>` : ''}
+        ${cert.valid_until ? `<div class="intel-kv">Until: ${cert.valid_until.slice(0,10)}</div>` : ''}
+        ${(cert.sans||[]).length ? `<div class="intel-kv">SANs: ${cert.sans.slice(0,4).join(', ')}</div>` : ''}
+      </div>
+      <div class="intel-card">
+        <h3>Security headers</h3>
+        ${secPresent.length ? tagsHtml(secPresent, 'ok') : ''}
+        ${secMissing.length ? tagsHtml(secMissing.map(h => h.replace('X-','')), 'err') : ''}
+        ${!secPresent.length && !secMissing.length ? '<span class="intel-empty">—</span>' : ''}
+      </div>
+      <div class="intel-card">
+        <h3>Attack plan</h3>
+        <div class="intel-val">Combo: <strong>${p.recommended_combo || '—'}</strong></div>
+        <div class="intel-kv">L7 mode: ${p.recommended_l7_mode || '—'} · intensity: ${p.attack_intensity || '—'}</div>
+        ${tagsHtml(p.recommended_vectors || [])}
+      </div>
+      ${notableLines.length ? `
+      <div class="intel-card wide">
+        <h3>Notable headers</h3>
+        <div class="intel-val mono">${notableLines.join(' · ')}</div>
+      </div>` : ''}
+      ${p.notes ? `<div class="intel-notes">${p.notes}</div>` : ''}
+    </div>`;
+}
+
+async function analyzeTarget() {
+  const url = document.getElementById('recon_url').value.trim();
+  if (!url) return alert('Enter URL');
+  const el = document.getElementById('recon_result');
+  el.innerHTML = '<div class="intel-empty">Analyzing target…</div>';
+  try {
+    const data = await (await apiFetch('/api/recon?url=' + encodeURIComponent(url))).json();
+    renderIntelProfile(data.profile || {});
+    document.getElementById('target_url').value = url;
+    logEvent('Recon done', 'ok');
+  } catch (e) {
+    el.innerHTML = '<div class="intel-empty" style="color:var(--err)">Analyze failed</div>';
+    logEvent('Recon failed', 'err');
+  }
+}
+
+async function promoteReconDraft() {
+  const r = await apiFetch('/api/recon/promote', { method:'POST' });
+  if (!r.ok) return alert(await r.text());
+  const j = await r.json();
+  await loadPolicy();
+  logEvent(j.note || 'Recon draft promoted', 'ok');
+  document.getElementById('recon_result').innerHTML =
+    `<div class="intel-empty" style="color:var(--ok)">${j.note || 'Draft promoted to policy.'}</div>`;
+}
+
+async function applyRecon() {
+  const url = document.getElementById('recon_url').value.trim();
+  const r = await apiFetch('/api/recon/apply', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ url, intensity: document.getElementById('intensity').value }) });
+  if (!r.ok) return alert(await r.text());
+  const applied = await r.json();
+  await loadPolicy();
+  let msg, color;
+  if (applied.draft_only || applied.status === 'draft') {
+    msg = 'Saved recon draft — combo/L7 mode/scale stored separately from policy.';
+    if (applied.needs_allowlist) {
+      msg += ` Host ${applied.host} is NOT allowlisted — add to allowed list, then re-apply or edit policy before Start.`;
+    }
+    color = 'var(--warn)';
+    logEvent('Recon draft saved' + (applied.needs_allowlist ? ' — allowlist required for ' + applied.host : ''), 'warn');
+  } else {
+    msg = 'Applied to policy — combo/L7 mode/scale updated.';
+    color = 'var(--ok)';
+    logEvent('Recon applied to policy', 'ok');
+  }
+  document.getElementById('recon_result').innerHTML = `<div class="intel-empty" style="color:${color}">${msg}</div>`;
+}
+
+(async function boot() {
+  if (!(await ensureAuth())) {
+    logEvent('API token required — reload with ?token=YOUR_TOKEN', 'err');
+    return;
+  }
+  await loadPolicy();
+  logEvent('Dashboard ready', 'info');
+  schedulePoll(false);
+  refreshStatus();
+})();
+</script>
+</body>
+</html>

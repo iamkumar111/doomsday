@@ -1,0 +1,36 @@
+combos:
+  - id: baseline
+    label: L7 baseline flood
+    phases: [l7-flood]
+
+  - id: protocol-storm
+    label: Parallel L7 + H2 + QUIC + slowloris
+    phases: [l7-post, h2-rapid, quic-stress, slowloris-hold]
+
+  - id: api-abuse
+    label: API / GraphQL / WS / H2 abuse
+    phases: [l7-apiflood, graphql-probe, ws-stress, h2-rapid]
+
+  - id: wordpress-abuse
+    label: WordPress heartbeat + search + POST
+    phases: [l7-wordpress, wp-search-stress, l7-post, slowloris-hold]
+
+  - id: magento-abuse
+    label: Magento catalog search + guest cart stress
+    phases: [magento-catalog-search, magento-guest-cart, l7-post, slowloris-hold]
+
+  - id: shopify-abuse
+    label: Shopify search/cart + API flood
+    phases: [shopify-search-stress, l7-apiflood, ws-stress]
+
+  - id: cms-abuse
+    label: CMS-specific search/cart rotate (auto by cms param)
+    phases: [cms-stress-rotate, l7-post, slowloris-hold]
+
+  - id: slayer-mix
+    label: Slayer-inspired L7 mix (GET + POST + API + slow + H2 + slowloris)
+    phases: [l7-get, l7-post, l7-apiflood, l7-rudy, h2-rapid, slowloris-hold]
+
+  - id: connection-exhaust
+    label: Slow connection exhaustion
+    phases: [slowloris-hold, l7-rudy]

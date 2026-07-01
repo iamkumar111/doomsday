@@ -1,0 +1,92 @@
+{
+  "target_url": "https://www.ambientinfotech.com/",
+  "host": "www.ambientinfotech.com",
+  "target_allowed": true,
+  "combo": "cms-abuse",
+  "l7_mode": "cms-rotate",
+  "workers": 64,
+  "streams": 500,
+  "batch_size": 200,
+  "intensity": "extreme",
+  "profile": {
+    "url": "https://www.ambientinfotech.com/",
+    "host": "www.ambientinfotech.com",
+    "final_url": "https://www.ambientinfotech.com/",
+    "status_code": 200,
+    "waf": "",
+    "cdn_providers": [
+      "Unknown/Direct"
+    ],
+    "server": "hcdn",
+    "tech_stack": [
+      "PHP/8.2.30",
+      "PHP",
+      "Node.js",
+      "Bootstrap"
+    ],
+    "cms": "OpenCart",
+    "frameworks": [
+      "jQuery",
+      "React"
+    ],
+    "analytics": [
+      "Google Analytics",
+      "Google Tag Manager"
+    ],
+    "security_headers": {
+      "Content-Security-Policy": "upgrade-insecure-requests",
+      "Permissions-Policy": "geolocation=(), midi=(), camera=(), usb=()",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+      "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "SAMEORIGIN"
+    },
+    "missing_sec_headers": [
+      "X-XSS-Protection"
+    ],
+    "notable_headers": {
+      "X-Powered-By": "PHP/8.2.30"
+    },
+    "resolved_ips": [
+      "88.222.243.244",
+      "147.79.69.196",
+      "2a02:4780:1f:5fcb:6b6d:b183:9f18:8065",
+      "2a02:4780:3d:2218:9b4b:b7aa:a5dc:1cf4"
+    ],
+    "origin_candidates": [
+      "88.222.243.244",
+      "147.79.69.196",
+      "2a02:4780:1f:5fcb:6b6d:b183:9f18:8065",
+      "2a02:4780:3d:2218:9b4b:b7aa:a5dc:1cf4",
+      "ambientinfotech.com"
+    ],
+    "cert": {
+      "common_name": "ambientinfotech.com",
+      "issuer": "R13",
+      "valid_from": "2026-05-26T00:45:15Z",
+      "valid_until": "2026-08-24T00:45:14Z",
+      "sans": [
+        "ambientinfotech.com",
+        "www.ambientinfotech.com"
+      ],
+      "origin_hints": [
+        "ambientinfotech.com"
+      ]
+    },
+    "has_cloudflare": false,
+    "has_akamai": false,
+    "has_fastly": false,
+    "notes": "Cert SAN hints: ambientinfotech.com | OpenCart detected — catalog search stress. | Origin candidates: 88.222.243.244, 147.79.69.196, 2a02:4780:1f:5fcb:6b6d:b183:9f18:8065, 2a02:4780:3d:2218:9b4b:b7aa:a5dc:1cf4, ambientinfotech.com",
+    "recommended_vectors": [
+      "cms-rotate",
+      "l7-post",
+      "slowloris",
+      "quic-burner"
+    ],
+    "recommended_combo": "cms-abuse",
+    "recommended_l7_mode": "cms-rotate",
+    "attack_intensity": "medium"
+  },
+  "applied_at": "2026-07-01T10:04:02.42339039Z",
+  "persisted_policy": true
+}

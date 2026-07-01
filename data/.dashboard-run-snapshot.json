@@ -1,0 +1,1 @@
+{"run":{"active":false,"started_at":"2026-07-01T10:04:14.1594026Z","expires_at":"2026-07-01T10:09:14.1594026Z","combo":"cms-abuse","mode":"learn-and-attack","target":"https://www.ambientinfotech.com/","vectors_ok":true},"last_phases":["cms-stress-rotate","l7-post","slowloris-hold","cms-stress-rotate","l7-post","slowloris-hold"]}

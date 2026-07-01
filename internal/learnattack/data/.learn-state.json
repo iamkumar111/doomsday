@@ -1,0 +1,355 @@
+{
+  "target_url": "",
+  "baseline": {
+    "latency_ms": 50,
+    "status_code": 200,
+    "reachable": true
+  },
+  "model": {
+    "weights": [
+      -10951024.202610744,
+      -1216780.4669567493,
+      0,
+      0,
+      0
+    ],
+    "bias": -1216780.4669567493
+  },
+  "combo_stats": {
+    "baseline": {
+      "pulls": 10,
+      "total_reward": 10500
+    }
+  },
+  "best": {
+    "workers": 8,
+    "streams": 40,
+    "batch_size": 20,
+    "combo": "baseline"
+  },
+  "best_score": 1050,
+  "round": 10,
+  "last_combo": "baseline",
+  "history": [
+    {
+      "round": 1,
+      "scale": {
+        "workers": 8,
+        "streams": 40,
+        "batch_size": 20,
+        "combo": "baseline"
+      },
+      "probe": {
+        "latency_ms": 500,
+        "status_code": 500,
+        "reachable": true
+      },
+      "baseline": {
+        "latency_ms": 50,
+        "status_code": 200,
+        "reachable": true
+      },
+      "degradation": 1050,
+      "model_predict": 0,
+      "best_degradation": 1050,
+      "top_vector": "",
+      "active_combo": "baseline",
+      "decision": "degradation improved (1050) — keep combo baseline, scale up",
+      "features": {
+        "latency_delta_norm": 9,
+        "status_5xx": 1,
+        "unreachable": 0,
+        "log_delta_rps": 0,
+        "attacker_err_rate": 0
+      }
+    },
+    {
+      "round": 2,
+      "scale": {
+        "workers": 8,
+        "streams": 40,
+        "batch_size": 20,
+        "combo": "baseline"
+      },
+      "probe": {
+        "latency_ms": 500,
+        "status_code": 500,
+        "reachable": true
+      },
+      "baseline": {
+        "latency_ms": 50,
+        "status_code": 200,
+        "reachable": true
+      },
+      "degradation": 1050,
+      "model_predict": 4357.5,
+      "best_degradation": 1050,
+      "top_vector": "",
+      "active_combo": "baseline",
+      "decision": "incremental workers +1",
+      "features": {
+        "latency_delta_norm": 9,
+        "status_5xx": 1,
+        "unreachable": 0,
+        "log_delta_rps": 0,
+        "attacker_err_rate": 0
+      }
+    },
+    {
+      "round": 3,
+      "scale": {
+        "workers": 8,
+        "streams": 40,
+        "batch_size": 20,
+        "combo": "baseline"
+      },
+      "probe": {
+        "latency_ms": 500,
+        "status_code": 500,
+        "reachable": true
+      },
+      "baseline": {
+        "latency_ms": 50,
+        "status_code": 200,
+        "reachable": true
+      },
+      "degradation": 1050,
+      "model_predict": -9368.625,
+      "best_degradation": 1050,
+      "top_vector": "",
+      "active_combo": "baseline",
+      "decision": "incremental workers +1",
+      "features": {
+        "latency_delta_norm": 9,
+        "status_5xx": 1,
+        "unreachable": 0,
+        "log_delta_rps": 0,
+        "attacker_err_rate": 0
+      }
+    },
+    {
+      "round": 4,
+      "scale": {
+        "workers": 8,
+        "streams": 40,
+        "batch_size": 20,
+        "combo": "baseline"
+      },
+      "probe": {
+        "latency_ms": 500,
+        "status_code": 500,
+        "reachable": true
+      },
+      "baseline": {
+        "latency_ms": 50,
+        "status_code": 200,
+        "reachable": true
+      },
+      "degradation": 1050,
+      "model_predict": 33868.66875,
+      "best_degradation": 1050,
+      "top_vector": "",
+      "active_combo": "baseline",
+      "decision": "explore combo baseline",
+      "features": {
+        "latency_delta_norm": 9,
+        "status_5xx": 1,
+        "unreachable": 0,
+        "log_delta_rps": 0,
+        "attacker_err_rate": 0
+      }
+    },
+    {
+      "round": 5,
+      "scale": {
+        "workers": 8,
+        "streams": 40,
+        "batch_size": 20,
+        "combo": "baseline"
+      },
+      "probe": {
+        "latency_ms": 500,
+        "status_code": 500,
+        "reachable": true
+      },
+      "baseline": {
+        "latency_ms": 50,
+        "status_code": 200,
+        "reachable": true
+      },
+      "degradation": 1050,
+      "model_predict": -102328.80656249999,
+      "best_degradation": 1050,
+      "top_vector": "",
+      "active_combo": "baseline",
+      "decision": "incremental workers +1",
+      "features": {
+        "latency_delta_norm": 9,
+        "status_5xx": 1,
+        "unreachable": 0,
+        "log_delta_rps": 0,
+        "attacker_err_rate": 0
+      }
+    },
+    {
+      "round": 6,
+      "scale": {
+        "workers": 8,
+        "streams": 40,
+        "batch_size": 20,
+        "combo": "baseline"
+      },
+      "probe": {
+        "latency_ms": 500,
+        "status_code": 500,
+        "reachable": true
+      },
+      "baseline": {
+        "latency_ms": 50,
+        "status_code": 200,
+        "reachable": true
+      },
+      "degradation": 1050,
+      "model_predict": 326693.240671875,
+      "best_degradation": 1050,
+      "top_vector": "",
+      "active_combo": "baseline",
+      "decision": "incremental workers +1",
+      "features": {
+        "latency_delta_norm": 9,
+        "status_5xx": 1,
+        "unreachable": 0,
+        "log_delta_rps": 0,
+        "attacker_err_rate": 0
+      }
+    },
+    {
+      "round": 7,
+      "scale": {
+        "workers": 8,
+        "streams": 40,
+        "batch_size": 20,
+        "combo": "baseline"
+      },
+      "probe": {
+        "latency_ms": 500,
+        "status_code": 500,
+        "reachable": true
+      },
+      "baseline": {
+        "latency_ms": 50,
+        "status_code": 200,
+        "reachable": true
+      },
+      "degradation": 1050,
+      "model_predict": -1024726.2081164063,
+      "best_degradation": 1050,
+      "top_vector": "",
+      "active_combo": "baseline",
+      "decision": "incremental workers +1",
+      "features": {
+        "latency_delta_norm": 9,
+        "status_5xx": 1,
+        "unreachable": 0,
+        "log_delta_rps": 0,
+        "attacker_err_rate": 0
+      }
+    },
+    {
+      "round": 8,
+      "scale": {
+        "workers": 8,
+        "streams": 40,
+        "batch_size": 20,
+        "combo": "baseline"
+      },
+      "probe": {
+        "latency_ms": 500,
+        "status_code": 500,
+        "reachable": true
+      },
+      "baseline": {
+        "latency_ms": 50,
+        "status_code": 200,
+        "reachable": true
+      },
+      "degradation": 1050,
+      "model_predict": 3232245.05556668,
+      "best_degradation": 1050,
+      "top_vector": "",
+      "active_combo": "baseline",
+      "decision": "explore combo baseline",
+      "features": {
+        "latency_delta_norm": 9,
+        "status_5xx": 1,
+        "unreachable": 0,
+        "log_delta_rps": 0,
+        "attacker_err_rate": 0
+      }
+    },
+    {
+      "round": 9,
+      "scale": {
+        "workers": 8,
+        "streams": 40,
+        "batch_size": 20,
+        "combo": "baseline"
+      },
+      "probe": {
+        "latency_ms": 500,
+        "status_code": 500,
+        "reachable": true
+      },
+      "baseline": {
+        "latency_ms": 50,
+        "status_code": 200,
+        "reachable": true
+      },
+      "degradation": 1050,
+      "model_predict": -10177214.425035043,
+      "best_degradation": 1050,
+      "top_vector": "",
+      "active_combo": "baseline",
+      "decision": "incremental workers +1",
+      "features": {
+        "latency_delta_norm": 9,
+        "status_5xx": 1,
+        "unreachable": 0,
+        "log_delta_rps": 0,
+        "attacker_err_rate": 0
+      }
+    },
+    {
+      "round": 10,
+      "scale": {
+        "workers": 8,
+        "streams": 40,
+        "batch_size": 20,
+        "combo": "baseline"
+      },
+      "probe": {
+        "latency_ms": 500,
+        "status_code": 500,
+        "reachable": true
+      },
+      "baseline": {
+        "latency_ms": 50,
+        "status_code": 200,
+        "reachable": true
+      },
+      "degradation": 1050,
+      "model_predict": 32062582.93886038,
+      "best_degradation": 1050,
+      "top_vector": "",
+      "active_combo": "baseline",
+      "decision": "incremental workers +1",
+      "features": {
+        "latency_delta_norm": 9,
+        "status_5xx": 1,
+        "unreachable": 0,
+        "log_delta_rps": 0,
+        "attacker_err_rate": 0
+      }
+    }
+  ]
+}

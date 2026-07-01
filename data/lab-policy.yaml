@@ -1,0 +1,19 @@
+lab_mode: isolated
+ethics_ack: I_OWN_THIS_LAB
+target_url: https://www.ambientinfotech.com/
+allowed_hosts:
+    - 127.0.0.1
+    - localhost
+    - ::1
+    - victim
+    - nginx-victim
+    - www.gyanvihar.org
+    - www.ambientinfotech.com
+conductor_mode: learn-and-attack
+combo: cms-abuse
+l7_mode: cms-rotate
+watchdog_cpu_percent: 0
+max_duration_sec: 300
+workers: 64
+streams: 500
+batch_size: 200
