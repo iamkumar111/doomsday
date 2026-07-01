@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <title>SH-MVDoS Lab</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -227,6 +228,15 @@
     .learn-line { font-size: .74rem; color: var(--muted); margin-top: .35rem; }
     .learn-line strong { color: var(--text); }
     .updated { font-size: .68rem; color: var(--muted); }
+    .pill.platform { border-color: #3b82f6; color: #93c5fd; background: rgba(59,130,246,.12); }
+    .pill.platform.ok { border-color: #1f6b47; color: var(--ok); background: rgba(61,214,140,.12); }
+    .pill.platform.err { border-color: #7f2d2d; color: var(--err); }
+    .plan-panel { margin-top: 1rem; border: 1px solid var(--accent-dim); background: rgba(79,140,255,.04); }
+    .plan-panel .panel-head { background: rgba(79,140,255,.08); }
+    .plan-panel .plan-line { font-family: 'IBM Plex Mono', monospace; font-size: .74rem; padding: .35rem 0; border-bottom: 1px solid rgba(36,48,65,.4); }
+    .plan-panel .plan-line:last-child { border-bottom: none; }
+    .metrics-table td, .metrics-table th { white-space: nowrap; }
+    .metrics-table td:first-child { font-family: 'IBM Plex Mono', monospace; min-width: 7rem; }
   </style>
 </head>
 <body>
@@ -240,6 +250,7 @@
       </div>
     </div>
     <div class="top-pills">
+      <span class="pill platform" id="pill_platform">Planner —</span>
       <span class="pill" id="pill_redis">Redis —</span>
       <span class="pill" id="pill_attack">Attack idle</span>
       <span class="pill" id="pill_mode">—</span>
@@ -343,7 +354,16 @@
 
           <div class="alert warn" id="unsaved" style="display:none"></div>
           <div class="alert" id="validate_msg"></div>
-          <div class="alert" id="plan_preview" style="display:none;font-size:.8rem;max-height:180px;overflow:auto"></div>
+
+          <div class="panel plan-panel" id="plan_panel">
+            <div class="panel-head">
+              <h2>Run Plan Preview</h2>
+              <span class="updated" id="plan_preview_ts">—</span>
+            </div>
+            <div class="panel-body" id="plan_preview" style="max-height:220px;overflow:auto">
+              <span class="empty">Click <strong>Preview plan</strong> to see weighted phases before Start.</span>
+            </div>
+          </div>
 
           <div class="toolbar">
             <button class="btn-ghost" onclick="savePolicy()">Save</button>
@@ -669,27 +689,57 @@ function draftPolicy() {
 
 async function previewPlan() {
   const el = document.getElementById('plan_preview');
-  el.style.display = 'block';
-  el.textContent = 'Building plan…';
+  const ts = document.getElementById('plan_preview_ts');
+  el.innerHTML = '<span class="empty">Building plan…</span>';
   try {
-    const body = { combo: document.getElementById('combo').value };
+    const body = draftPolicy();
     const r = await apiFetch('/api/plan/preview', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     if (!r.ok) {
       const t = await r.text();
-      el.textContent = t || 'No planner for this combo — uses legacy phases.yaml';
-      el.className = 'alert warn';
+      el.innerHTML = `<div class="alert err">${t || 'Preview failed'}</div>`;
+      ts.textContent = 'error';
       return;
     }
     const plan = await r.json();
-    const lines = (plan.phases || []).map(ph =>
-      `${ph.start_after_sec}s · ${ph.vector} → ${ph.worker} · ${ph.scale.workers}w ${ph.scale.streams}s ${ph.scale.batch}b · ${ph.protocol}`);
-    el.innerHTML = `<strong>${plan.label || plan.plan_id}</strong> (${plan.max_duration_sec}s)<br>` +
-      (lines.length ? lines.join('<br>') : 'No phases') +
-      (plan.warnings?.length ? `<br><em>${plan.warnings.join('; ')}</em>` : '');
-    el.className = 'alert';
+    const lines = (plan.phases || []).map(ph => {
+      const sc = ph.scale || {};
+      const w = sc.workers ?? sc.Workers ?? '—';
+      const s = sc.streams ?? sc.Streams ?? '—';
+      const b = sc.batch ?? sc.Batch ?? '—';
+      const worker = ph.worker || ph.redis_vector || '—';
+      const proto = ph.protocol || '—';
+      return `<div class="plan-line">${ph.start_after_sec ?? 0}s · <strong>${ph.vector}</strong> → ${worker} · ${w}w ${s}s ${b}b · ${proto}</div>`;
+    });
+    const legacy = plan.legacy ? ' <span class="intel-tag warn">legacy</span>' : '';
+    const req = (plan.required_workers || []).join(', ');
+    el.innerHTML =
+      `<div style="margin-bottom:.5rem"><strong>${plan.label || plan.plan_id}</strong>${legacy} · ${plan.max_duration_sec}s · workers: ${req || '—'}</div>` +
+      (lines.length ? lines.join('') : '<span class="empty">No phases</span>') +
+      (plan.warnings?.length ? `<div class="alert warn" style="margin-top:.5rem">${plan.warnings.join('; ')}</div>` : '');
+    ts.textContent = new Date().toLocaleTimeString();
+    logEvent('Plan preview: ' + (plan.plan_id || plan.label), plan.legacy ? 'warn' : 'ok');
   } catch (e) {
-    el.textContent = String(e);
-    el.className = 'alert err';
+    el.innerHTML = `<div class="alert err">${String(e)}</div>`;
+    ts.textContent = 'error';
+  }
+}
+
+async function loadPlatformStatus() {
+  const pill = document.getElementById('pill_platform');
+  try {
+    const j = await (await apiFetch('/api/platform')).json();
+    if (j.planner_ready) {
+      pill.textContent = 'Planner v2';
+      pill.className = 'pill platform ok';
+    } else {
+      pill.textContent = 'Planner offline';
+      pill.className = 'pill platform err';
+      pill.title = j.planner_error || 'Check VECTORS_PATH / COMBO_PLANS_PATH in runtime.env';
+      logEvent('Planner offline: ' + (j.planner_error || 'config missing'), 'err');
+    }
+  } catch (e) {
+    pill.textContent = 'Platform ?';
+    pill.className = 'pill platform err';
   }
 }
 
@@ -1028,10 +1078,12 @@ async function applyRecon() {
     logEvent('API token required — reload with ?token=YOUR_TOKEN', 'err');
     return;
   }
+  await loadPlatformStatus();
   await loadVectors();
   await loadPolicy();
   document.getElementById('l7_mode').addEventListener('change', () => updateScaleBindings(true));
-  logEvent('Dashboard ready', 'info');
+  document.getElementById('combo').addEventListener('change', () => previewPlan());
+  logEvent('Dashboard ready (vector platform v2)', 'info');
   schedulePoll(false);
   refreshStatus();
 })();

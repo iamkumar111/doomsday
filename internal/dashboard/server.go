@@ -274,6 +274,7 @@ func (s *Server) ListenAndServe() error {
 	api("/api/combos", s.handleCombos)
 	api("/api/vectors", s.handleVectors)
 	api("/api/workers", s.handleWorkers)
+	api("/api/platform", s.handlePlatform)
 	api("/api/plan/preview", s.handlePlanPreview)
 	api("/api/recon", s.handleRecon)
 	api("/api/recon/apply", s.handleReconApply)
