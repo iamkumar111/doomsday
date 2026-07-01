@@ -9,6 +9,7 @@ import (
 	"github.com/kjsst/sh-mvdos/internal/redisbus"
 	"github.com/kjsst/sh-mvdos/internal/vector"
 	"github.com/kjsst/sh-mvdos/internal/worker/busloop"
+	"github.com/kjsst/sh-mvdos/internal/worker/proxy"
 )
 
 func main() {
@@ -36,10 +37,15 @@ func main() {
 		PolicyPath: policyPath,
 		Bus:        bus,
 		Run: func(ctx context.Context, ev redisbus.PhaseEvent, prog *busloop.PhaseProgress) (uint64, uint64) {
+			phaseProxy := ""
+			if ev.Params != nil {
+				phaseProxy = ev.Params["proxy_file"]
+			}
 			scale := vector.Scale{
-				Workers: ev.Workers,
-				Streams: ev.Streams,
-				Batch:   ev.BatchSize,
+				Workers:   ev.Workers,
+				Streams:   ev.Streams,
+				Batch:     ev.BatchSize,
+				ProxyFile: proxy.ResolveFile(policyPath, phaseProxy, env("PROXY_FILE", "")),
 			}
 			if prog != nil {
 				prog.ActualMode = string(spec.ID)

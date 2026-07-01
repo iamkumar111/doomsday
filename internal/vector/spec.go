@@ -57,11 +57,12 @@ type Scale struct {
 
 // RunResult is the outcome of a vector execution.
 type RunResult struct {
-	VectorID  ID
-	Protocol  string
-	Attempts  uint64
-	Errors    uint64
-	Elapsed   float64
-	RPS       float64
-	ActualMode string
+	VectorID        ID
+	Protocol        string
+	Attempts        uint64
+	Errors          uint64
+	OpenConnections uint64
+	Elapsed         float64
+	RPS             float64
+	ActualMode      string
 }

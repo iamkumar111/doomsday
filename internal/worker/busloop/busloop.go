@@ -20,6 +20,7 @@ type PhaseProgress struct {
 	Attempts        atomic.Uint64
 	Errors          atomic.Uint64
 	OpenConnections atomic.Uint64
+	PeakOpen        atomic.Uint64
 	ActualMode      string
 	Protocol        string
 }
@@ -218,7 +219,11 @@ func (st *serveState) startPhaseInternal(ev redisbus.PhaseEvent, replay bool) {
 			elapsed = 0.001
 		}
 		final := redisbus.MetricsFromPhase(ev, reqs, errs, float64(reqs)/elapsed)
-		final.OpenConnections = prog.OpenConnections.Load()
+		open := prog.PeakOpen.Load()
+		if open == 0 {
+			open = prog.OpenConnections.Load()
+		}
+		final.OpenConnections = open
 		if prog.ActualMode != "" {
 			final.ActualMode = prog.ActualMode
 		}

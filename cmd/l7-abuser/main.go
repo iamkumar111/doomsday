@@ -11,6 +11,7 @@ import (
 	"github.com/kjsst/sh-mvdos/internal/vector"
 	"github.com/kjsst/sh-mvdos/internal/worker"
 	"github.com/kjsst/sh-mvdos/internal/worker/busloop"
+	"github.com/kjsst/sh-mvdos/internal/worker/proxy"
 )
 
 func main() {
@@ -37,17 +38,16 @@ func main() {
 		Bus:        bus,
 		Run: func(ctx context.Context, ev redisbus.PhaseEvent, prog *busloop.PhaseProgress) (uint64, uint64) {
 			mode := "baseline"
-			proxyFile := env("PROXY_FILE", "")
+			phaseProxy := ""
 			wsPath := ""
 			if ev.Params != nil {
 				if ev.Params["mode"] != "" {
 					mode = ev.Params["mode"]
 				}
-				if ev.Params["proxy_file"] != "" {
-					proxyFile = ev.Params["proxy_file"]
-				}
+				phaseProxy = ev.Params["proxy_file"]
 				wsPath = ev.Params["ws_path"]
 			}
+			proxyFile := proxy.ResolveFile(policyPath, phaseProxy, env("PROXY_FILE", ""))
 			spec, err := reg.Resolve(mode)
 			if err != nil {
 				spec, _ = reg.Resolve("baseline")
@@ -79,6 +79,7 @@ func main() {
 					Attempts:        &prog.Attempts,
 					Errors:          &prog.Errors,
 					OpenConnections: &prog.OpenConnections,
+					PeakOpen:        &prog.PeakOpen,
 				}
 			}
 			reqs, errs, runErr := w.Run(ctx)

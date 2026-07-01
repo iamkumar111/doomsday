@@ -3,6 +3,7 @@ package vector
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/kjsst/sh-mvdos/internal/worker"
@@ -15,6 +16,15 @@ func Run(ctx context.Context, spec Spec, target string, scale Scale) (RunResult,
 
 	var reqs, errs uint64
 	var err error
+
+	var peakOpen atomic.Uint64
+	var openConns atomic.Uint64
+	progress := &worker.ProgressSink{
+		Attempts:        &atomic.Uint64{},
+		Errors:          &atomic.Uint64{},
+		OpenConnections: &openConns,
+		PeakOpen:        &peakOpen,
+	}
 
 	switch spec.Worker {
 	case "l7-abuser":
@@ -29,6 +39,7 @@ func Run(ctx context.Context, spec Spec, target string, scale Scale) (RunResult,
 			BatchSize: scale.Batch,
 			Mode:      mode,
 			ProxyFile: scale.ProxyFile,
+			Progress:  progress,
 		}
 		if scale.Batch <= 0 && spec.ID == IDRUDY {
 			w.BatchSize = 1
@@ -40,6 +51,7 @@ func Run(ctx context.Context, spec Spec, target string, scale Scale) (RunResult,
 			Workers:   scale.Workers,
 			Streams:   scale.Streams,
 			BatchSize: scale.Batch,
+			ProxyFile: scale.ProxyFile,
 		}
 		reqs, errs, err = w.Run(ctx)
 	case "ws-flood":
@@ -69,14 +81,19 @@ func Run(ctx context.Context, spec Spec, target string, scale Scale) (RunResult,
 	if elapsed < 0.001 {
 		elapsed = 0.001
 	}
+	open := peakOpen.Load()
+	if open == 0 && openConns.Load() > 0 {
+		open = openConns.Load()
+	}
 	return RunResult{
-		VectorID:   spec.ID,
-		Protocol:   spec.Protocol,
-		Attempts:   reqs,
-		Errors:     errs,
-		Elapsed:    elapsed,
-		RPS:        float64(reqs) / elapsed,
-		ActualMode: string(spec.ID),
+		VectorID:        spec.ID,
+		Protocol:        spec.Protocol,
+		Attempts:        reqs,
+		Errors:          errs,
+		OpenConnections: open,
+		Elapsed:         elapsed,
+		RPS:             float64(reqs) / elapsed,
+		ActualMode:      string(spec.ID),
 	}, err
 }
 

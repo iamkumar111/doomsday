@@ -20,6 +20,7 @@ type ProgressSink struct {
 	Attempts        *atomic.Uint64
 	Errors          *atomic.Uint64
 	OpenConnections *atomic.Uint64
+	PeakOpen        *atomic.Uint64
 }
 
 type L7Abuser struct {
@@ -97,11 +98,21 @@ func (w *L7Abuser) addError() {
 }
 
 func (w *L7Abuser) trackOpen(delta int64) {
-	if w.Progress != nil && w.Progress.OpenConnections != nil {
-		if delta > 0 {
-			w.Progress.OpenConnections.Add(uint64(delta))
-		} else {
-			w.Progress.OpenConnections.Add(^uint64(-delta - 1))
+	if w.Progress == nil || w.Progress.OpenConnections == nil {
+		return
+	}
+	if delta > 0 {
+		w.Progress.OpenConnections.Add(uint64(delta))
+	} else {
+		w.Progress.OpenConnections.Add(^uint64(-delta - 1))
+	}
+	cur := w.Progress.OpenConnections.Load()
+	if w.Progress.PeakOpen != nil {
+		for {
+			prev := w.Progress.PeakOpen.Load()
+			if cur <= prev || w.Progress.PeakOpen.CompareAndSwap(prev, cur) {
+				break
+			}
 		}
 	}
 }

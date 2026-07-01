@@ -95,3 +95,67 @@ plans:
       - vector: slowloris
         start_after_sec: 4
         weight: 0.1
+
+  - id: api-abuse
+    label: API / GraphQL / WS / H2 abuse
+    phases:
+      - vector: apiflood
+        start_after_sec: 0
+        weight: 0.3
+        params:
+          path_profile: api
+      - vector: graphql
+        start_after_sec: 1
+        weight: 0.2
+      - vector: ws-flood
+        start_after_sec: 2
+        weight: 0.25
+        params:
+          path_profile: websocket
+      - vector: h2-rapid-reset
+        start_after_sec: 3
+        weight: 0.25
+
+  - id: wordpress-abuse
+    label: WordPress heartbeat + POST + slowloris
+    phases:
+      - vector: wordpress
+        start_after_sec: 0
+        weight: 0.35
+      - vector: httppost
+        start_after_sec: 0
+        weight: 0.25
+        params:
+          path_profile: wordpress
+      - vector: slowloris
+        start_after_sec: 2
+        weight: 0.4
+
+  - id: magento-abuse
+    label: Magento catalog + API stress
+    phases:
+      - vector: catalog-search
+        start_after_sec: 0
+        weight: 0.4
+      - vector: apiflood
+        start_after_sec: 1
+        weight: 0.3
+        params:
+          path_profile: api
+      - vector: httppost
+        start_after_sec: 2
+        weight: 0.3
+        params:
+          path_profile: magento
+
+  - id: shopify-abuse
+    label: Shopify search + API flood
+    phases:
+      - vector: shopify-search
+        start_after_sec: 0
+        weight: 0.5
+      - vector: apiflood
+        start_after_sec: 1
+        weight: 0.5
+        params:
+          path_profile: api

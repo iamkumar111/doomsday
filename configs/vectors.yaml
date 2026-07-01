@@ -131,6 +131,80 @@ vectors:
     defaults:
       workers: 200
 
+  - id: wordpress
+    label: WordPress heartbeat abuse
+    aliases: []
+    worker: l7-abuser
+    redis_vector: l7-abuser
+    protocol: http/1.1
+    capabilities:
+      workers: true
+      streams: true
+      batch: true
+      paths: true
+      payload_profile: true
+      proxy_file: true
+    defaults:
+      workers: 64
+      streams: 4
+      batch: 50
+    path_profiles: [wordpress]
+
+  - id: catalog-search
+    label: Magento catalog search
+    aliases: [magento-search]
+    worker: l7-abuser
+    redis_vector: l7-abuser
+    protocol: http/1.1
+    capabilities:
+      workers: true
+      streams: true
+      batch: true
+      paths: true
+      proxy_file: true
+    defaults:
+      workers: 64
+      streams: 4
+      batch: 50
+    path_profiles: [magento]
+
+  - id: shopify-search
+    label: Shopify search stress
+    aliases: []
+    worker: l7-abuser
+    redis_vector: l7-abuser
+    protocol: http/1.1
+    capabilities:
+      workers: true
+      streams: true
+      batch: true
+      paths: true
+      proxy_file: true
+    defaults:
+      workers: 64
+      streams: 4
+      batch: 50
+    path_profiles: [default]
+
+  - id: graphql
+    label: GraphQL probe
+    aliases: []
+    worker: l7-abuser
+    redis_vector: l7-abuser
+    protocol: http/1.1
+    capabilities:
+      workers: true
+      streams: true
+      batch: true
+      paths: true
+      payload_profile: true
+      proxy_file: true
+    defaults:
+      workers: 32
+      streams: 4
+      batch: 30
+    path_profiles: [graphql]
+
   - id: baseline
     label: L7 baseline mix
     aliases: []

@@ -13,6 +13,7 @@ import (
 	"github.com/kjsst/sh-mvdos/internal/bench"
 	"github.com/kjsst/sh-mvdos/internal/guard"
 	"github.com/kjsst/sh-mvdos/internal/labpolicy"
+	vec "github.com/kjsst/sh-mvdos/internal/vector"
 	"github.com/kjsst/sh-mvdos/internal/worker"
 )
 
@@ -30,6 +31,8 @@ func main() {
 		policyPath = flag.String("policy", "data/lab-policy.yaml", "lab policy path")
 		skipProbe  = flag.Bool("skip-probe", false, "skip victim reachability check")
 		matrix     = flag.Bool("matrix", false, "Slayer-class vector matrix (httpget, httppost, rudy, apiflood, h2, ws)")
+		parity     = flag.Bool("parity", false, "with -matrix: print Slayer parity pass/fail gates")
+		proxyFile  = flag.String("proxy", "", "proxy file (optional, Slayer -p parity)")
 	)
 	flag.Parse()
 
@@ -82,6 +85,7 @@ func main() {
 			Workers:   *workers,
 			Streams:   *streams,
 			Batch:     *batch,
+			ProxyFile: strings.TrimSpace(*proxyFile),
 		}
 		mresults, err := bench.RunMatrix(ctx, mopt)
 		if err != nil {
@@ -94,6 +98,24 @@ func main() {
 			_ = enc.Encode(mresults)
 		} else {
 			fmt.Print(bench.FormatMatrixTable(mresults))
+			if *parity {
+				var scores []bench.ParityScore
+				for _, r := range mresults {
+					scores = append(scores, bench.ScoreParity(r.VectorID, *workers, vec.RunResult{
+						Attempts:        r.Attempts,
+						Errors:          r.Errors,
+						RPS:             r.RPS,
+						OpenConnections: r.OpenConnections,
+						Elapsed:         r.ElapsedSec,
+					}))
+				}
+				fmt.Print(bench.FormatParityTable(scores))
+				for _, s := range scores {
+					if s.GatePct > 0 && !s.Passed {
+						os.Exit(2)
+					}
+				}
+			}
 		}
 		return
 	}

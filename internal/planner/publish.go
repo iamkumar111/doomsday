@@ -18,7 +18,7 @@ func ToPhaseEvents(plan RunPlan, runID string, start time.Time) []redisbus.Phase
 		if ph.Scale.WSPath != "" {
 			params["ws_path"] = ph.Scale.WSPath
 		}
-		if ph.Vector == "httpget" || ph.Vector == "httppost" || ph.Vector == "apiflood" || ph.Vector == "rudy" || ph.Vector == "baseline" {
+		if ph.Worker == "l7-abuser" {
 			params["mode"] = ph.Vector
 		}
 		if ph.Protocol != "" {

